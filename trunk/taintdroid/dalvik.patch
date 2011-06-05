@@ -1,97 +1,272 @@
-diff -r dalvik/libcore/luni/src/main/java/java/io/FileDescriptor.java dalvik1/libcore/luni/src/main/java/java/io/FileDescriptor.java
-116a117,118
->     public int port = 0;
-> 
-diff -r dalvik/libcore/luni/src/main/java/org/apache/harmony/luni/platform/OSNetworkSystem.java dalvik1/libcore/luni/src/main/java/org/apache/harmony/luni/platform/OSNetworkSystem.java
-120a121
->             fd.port = port;
-135a137
-> 	    fd.port = port;
-151a154
-> 	    //fd.port = port;
-171a175
-> 	    fd.port = port;
-410a415,416
-> 	String dstr = new String(data);
-> 	Taint.log("OSNetworkSystem.read(). Response=["+dstr+"]");
-468a475,476
-> 	String dstr = new String(data);
-> 	Taint.log("OSNetworkSystem.read(). Response=["+dstr+"]");
-509a518,519
-> 	String dstr = new String(data);
->         Taint.log("OSNetworkSystem.read(). Response=["+dstr+"]");
-533,536c543,547
-< 	    String dstr = new String(data);
-< 	    String addr = (fd.hasName) ? fd.name : "unknown";
-< 	    String tstr = "0x" + Integer.toHexString(tag);
-< 	    Taint.log("OSNetworkSystem.sendStream("+addr+") received data with tag " + tstr + " data=["+dstr+"]");
----
-> 		String dstr = new String(data);
-> 		String addr = (fd.hasName) ? fd.name : "unknown";
-> 		int port = (fd.hasName) ? fd.port : 0;
-> 		String tstr = "0x" + Integer.toHexString(tag);
-> 		Taint.log("OSNetworkSystem.sendStream("+addr+":"+port+") sending data with tag " + tstr + " data=["+dstr+"]");
-667,670c678,682
-< 	    String dstr = new String(data);
-< 	    String addr = (fd.hasName) ? fd.name : "unknown";
-< 	    String tstr = "0x" + Integer.toHexString(tag);
-< 	    Taint.log("OSNetworkSystem.sendConnectedDatagram("+addr+") received data with tag " + tstr + " data=["+dstr+"]");
----
-> 		String dstr = new String(data);
-> 		String addr = (fd.hasName) ? fd.name : "unknown";
-> 		int por = (fd.hasName) ? fd.port : 0;
-> 		String tstr = "0x" + Integer.toHexString(tag);
-> 		Taint.log("OSNetworkSystem.sendStream("+addr+":"+por+") sending data with tag " + tstr + " data=["+dstr+"]");
-725,728c737,741
-< 	    String dstr = new String(data);
-< 	    String addr = (fd.hasName) ? fd.name : "unknown";
-< 	    String tstr = "0x" + Integer.toHexString(tag);
-< 	    Taint.log("OSNetworkSystem.sendDatagram("+addr+") received data with tag " + tstr + " data=["+dstr+"]");
----
-> 		String dstr = new String(data);
-> 		String addr = (fd.hasName) ? fd.name : "unknown";
-> 		int por = (fd.hasName) ? fd.port : 0;
-> 		String tstr = "0x" + Integer.toHexString(tag);
-> 		Taint.log("OSNetworkSystem.sendStream("+addr+":"+por+") sending data with tag " + tstr + " data=["+dstr+"]");
-744,747c757,761
-< 	    String dstr = new String(data);
-< 	    String addr = (fd.hasName) ? fd.name : "unknown";
-< 	    String tstr = "0x" + Integer.toHexString(tag);
-< 	    Taint.log("OSNetworkSystem.sendDatagram2("+addr+") received data with tag " + tstr + " data=["+dstr+"]");
----
-> 		String dstr = new String(data);
-> 		String addr = (fd.hasName) ? fd.name : "unknown";
-> 		int por = (fd.hasName) ? fd.port : 0;
-> 		String tstr = "0x" + Integer.toHexString(tag);
-> 		Taint.log("OSNetworkSystem.sendStream("+addr+":"+por+") sending data with tag " + tstr + " data=["+dstr+"]");
-773,780d786
-< 	// begin WITH_TAINT_TRACKING
-< 	int tag = Taint.getTaintByte(value);
-< 	String addr = (fd.hasName) ? fd.name : "unknown";
-< 	if (tag != Taint.TAINT_CLEAR) {
-< 	    String tstr = "0x" + Integer.toHexString(tag);
-< 	    Taint.log("OSNetworkSystem.sendUrgentData("+addr+") received data with tag " + tstr + " value=["+value+"]");
-< 	}
-< 	// end WITH_TAINT_TRACKING
-diff -r dalvik/libcore/security/src/main/java/java/security/MessageDigest.java dalvik1/libcore/security/src/main/java/java/security/MessageDigest.java
-26c26
-< 
----
-> import dalvik.system.Taint;
-89a90
->                 Taint.log("About to hash something with " + algorithm);
-93a95
-> 		Taint.log("About to hash something with " + algorithm);
-229a232,235
-> 	int tag = Taint.getTaintByteArray(input);
-> 	if (tag != Taint.TAINT_CLEAR) {
-> 	    Taint.log("Hash " + new String(input));
-> 	}
-242c248,252
-<         return engineDigest();
----
-> 	byte[] data = engineDigest();
-> 	//begin WITH_TAINT_TRACKING
-> 	Taint.addTaintString(new String(data), Taint.TAINT_IMEI);
-> 	//end WITH_TAINT_TRACKING
->         return data;
+diff -crB dalvik/libcore/luni/src/main/java/java/io/FileDescriptor.java dalvik1/libcore/luni/src/main/java/java/io/FileDescriptor.java
+*** dalvik/libcore/luni/src/main/java/java/io/FileDescriptor.java	2011-06-05 05:50:50.082570000 -0700
+--- dalvik1/libcore/luni/src/main/java/java/io/FileDescriptor.java	2011-03-26 03:52:02.694623000 -0700
+***************
+*** 114,119 ****
+--- 114,121 ----
+       */
+      public boolean hasName = false;
+  
++     public int port = 0;
++ 
+      /**
+       * hack for printing out IP address
+       * @hide
+diff -crB dalvik/libcore/luni/src/main/java/org/apache/harmony/luni/platform/OSNetworkSystem.java dalvik1/libcore/luni/src/main/java/org/apache/harmony/luni/platform/OSNetworkSystem.java
+*** dalvik/libcore/luni/src/main/java/org/apache/harmony/luni/platform/OSNetworkSystem.java	2011-06-05 05:50:50.082570000 -0700
+--- dalvik1/libcore/luni/src/main/java/org/apache/harmony/luni/platform/OSNetworkSystem.java	2011-03-26 08:13:17.406891000 -0700
+***************
+*** 118,123 ****
+--- 118,124 ----
+  	// begin WITH_TAINT_TRACKING
+  	String addr = inetAddress.getHostAddress();
+  	if (addr != null) {
++             fd.port = port;
+  	    fd.hasName = true;
+  	    fd.name = addr;
+  	}
+***************
+*** 133,138 ****
+--- 134,140 ----
+  	// begin WITH_TAINT_TRACKING
+  	String addr = inetAddress.getHostAddress();
+  	if (addr != null) {
++ 	    fd.port = port;
+  	    fd.hasName = true;
+  	    fd.name = addr;
+  	}
+***************
+*** 149,154 ****
+--- 151,157 ----
+  	// begin WITH_TAINT_TRACKING
+  	String addr = inetAddress.getHostAddress();
+  	if (addr != null) {
++ 	    //fd.port = port;
+  	    aFD.hasName = true;
+  	    aFD.name = addr;
+  	}
+***************
+*** 169,174 ****
+--- 172,178 ----
+  	// begin WITH_TAINT_TRACKING
+  	String addr = inetAddress.getHostAddress();
+  	if (addr != null) {
++ 	    fd.port = port;
+  	    fd.hasName = true;
+  	    fd.name = addr;
+  	}
+***************
+*** 408,413 ****
+--- 412,419 ----
+       */
+      public int read(FileDescriptor fd, byte[] data, int offset, int count,
+              int timeout) throws IOException {
++ 	String dstr = new String(data);
++ 	Taint.log("OSNetworkSystem.read(). Response=["+dstr+"]");
+          return readSocketImpl(fd, data, offset, count, timeout);
+      }
+  
+***************
+*** 466,471 ****
+--- 472,479 ----
+      public int receiveDatagram(FileDescriptor fd, DatagramPacket packet,
+              byte[] data, int offset, int length, int receiveTimeout,
+              boolean peek) throws IOException {
++ 	String dstr = new String(data);
++ 	Taint.log("OSNetworkSystem.read(). Response=["+dstr+"]");
+          return receiveDatagramImpl(fd, packet, data, offset, length,
+                  receiveTimeout, peek);
+      }
+***************
+*** 507,512 ****
+--- 515,522 ----
+       */
+      public int receiveStream(FileDescriptor aFD, byte[] data,
+              int offset, int count, int timeout) throws IOException {
++ 	String dstr = new String(data);
++         Taint.log("OSNetworkSystem.read(). Response=["+dstr+"]");
+          return receiveStreamImpl(aFD, data, offset, count, timeout);
+      }
+  
+***************
+*** 530,539 ****
+  	// begin WITH_TAINT_TRACKING
+  	int tag = Taint.getTaintByteArray(data);
+  	if (tag != Taint.TAINT_CLEAR) {
+! 	    String dstr = new String(data);
+! 	    String addr = (fd.hasName) ? fd.name : "unknown";
+! 	    String tstr = "0x" + Integer.toHexString(tag);
+! 	    Taint.log("OSNetworkSystem.sendStream("+addr+") received data with tag " + tstr + " data=["+dstr+"]");
+  	}
+  	// end WITH_TAINT_TRACKING
+          return sendStreamImpl(fd, data, offset, count);
+--- 540,550 ----
+  	// begin WITH_TAINT_TRACKING
+  	int tag = Taint.getTaintByteArray(data);
+  	if (tag != Taint.TAINT_CLEAR) {
+! 		String dstr = new String(data);
+! 		String addr = (fd.hasName) ? fd.name : "unknown";
+! 		int port = (fd.hasName) ? fd.port : 0;
+! 		String tstr = "0x" + Integer.toHexString(tag);
+! 		Taint.log("OSNetworkSystem.sendStream("+addr+":"+port+") sending data with tag " + tstr + " data=["+dstr+"]");
+  	}
+  	// end WITH_TAINT_TRACKING
+          return sendStreamImpl(fd, data, offset, count);
+***************
+*** 664,673 ****
+  	// begin WITH_TAINT_TRACKING
+  	int tag = Taint.getTaintByteArray(data);
+  	if (tag != Taint.TAINT_CLEAR) {
+! 	    String dstr = new String(data);
+! 	    String addr = (fd.hasName) ? fd.name : "unknown";
+! 	    String tstr = "0x" + Integer.toHexString(tag);
+! 	    Taint.log("OSNetworkSystem.sendConnectedDatagram("+addr+") received data with tag " + tstr + " data=["+dstr+"]");
+  	}
+  	// end WITH_TAINT_TRACKING
+          return sendConnectedDatagramImpl(fd, data, offset, length, bindToDevice);
+--- 675,685 ----
+  	// begin WITH_TAINT_TRACKING
+  	int tag = Taint.getTaintByteArray(data);
+  	if (tag != Taint.TAINT_CLEAR) {
+! 		String dstr = new String(data);
+! 		String addr = (fd.hasName) ? fd.name : "unknown";
+! 		int por = (fd.hasName) ? fd.port : 0;
+! 		String tstr = "0x" + Integer.toHexString(tag);
+! 		Taint.log("OSNetworkSystem.sendStream("+addr+":"+por+") sending data with tag " + tstr + " data=["+dstr+"]");
+  	}
+  	// end WITH_TAINT_TRACKING
+          return sendConnectedDatagramImpl(fd, data, offset, length, bindToDevice);
+***************
+*** 722,731 ****
+  	// begin WITH_TAINT_TRACKING
+  	int tag = Taint.getTaintByteArray(data);
+  	if (tag != Taint.TAINT_CLEAR) {
+! 	    String dstr = new String(data);
+! 	    String addr = (fd.hasName) ? fd.name : "unknown";
+! 	    String tstr = "0x" + Integer.toHexString(tag);
+! 	    Taint.log("OSNetworkSystem.sendDatagram("+addr+") received data with tag " + tstr + " data=["+dstr+"]");
+  	}
+  	// end WITH_TAINT_TRACKING
+          return sendDatagramImpl(fd, data, offset, length, port, bindToDevice,
+--- 734,744 ----
+  	// begin WITH_TAINT_TRACKING
+  	int tag = Taint.getTaintByteArray(data);
+  	if (tag != Taint.TAINT_CLEAR) {
+! 		String dstr = new String(data);
+! 		String addr = (fd.hasName) ? fd.name : "unknown";
+! 		int por = (fd.hasName) ? fd.port : 0;
+! 		String tstr = "0x" + Integer.toHexString(tag);
+! 		Taint.log("OSNetworkSystem.sendStream("+addr+":"+por+") sending data with tag " + tstr + " data=["+dstr+"]");
+  	}
+  	// end WITH_TAINT_TRACKING
+          return sendDatagramImpl(fd, data, offset, length, port, bindToDevice,
+***************
+*** 741,750 ****
+  	// begin WITH_TAINT_TRACKING
+  	int tag = Taint.getTaintByteArray(data);
+  	if (tag != Taint.TAINT_CLEAR) {
+! 	    String dstr = new String(data);
+! 	    String addr = (fd.hasName) ? fd.name : "unknown";
+! 	    String tstr = "0x" + Integer.toHexString(tag);
+! 	    Taint.log("OSNetworkSystem.sendDatagram2("+addr+") received data with tag " + tstr + " data=["+dstr+"]");
+  	}
+  	// end WITH_TAINT_TRACKING
+          return sendDatagramImpl2(fd, data, offset, length, port, inetAddress);
+--- 754,764 ----
+  	// begin WITH_TAINT_TRACKING
+  	int tag = Taint.getTaintByteArray(data);
+  	if (tag != Taint.TAINT_CLEAR) {
+! 		String dstr = new String(data);
+! 		String addr = (fd.hasName) ? fd.name : "unknown";
+! 		int por = (fd.hasName) ? fd.port : 0;
+! 		String tstr = "0x" + Integer.toHexString(tag);
+! 		Taint.log("OSNetworkSystem.sendStream("+addr+":"+por+") sending data with tag " + tstr + " data=["+dstr+"]");
+  	}
+  	// end WITH_TAINT_TRACKING
+          return sendDatagramImpl2(fd, data, offset, length, port, inetAddress);
+***************
+*** 770,783 ****
+              int trafficClass, InetAddress inetAddress) throws IOException;
+  
+      public void sendUrgentData(FileDescriptor fd, byte value) {
+- 	// begin WITH_TAINT_TRACKING
+- 	int tag = Taint.getTaintByte(value);
+- 	String addr = (fd.hasName) ? fd.name : "unknown";
+- 	if (tag != Taint.TAINT_CLEAR) {
+- 	    String tstr = "0x" + Integer.toHexString(tag);
+- 	    Taint.log("OSNetworkSystem.sendUrgentData("+addr+") received data with tag " + tstr + " value=["+value+"]");
+- 	}
+- 	// end WITH_TAINT_TRACKING
+          sendUrgentDataImpl(fd, value);
+      }
+  
+--- 784,789 ----
+diff -crB dalvik/libcore/security/src/main/java/java/security/MessageDigest.java dalvik1/libcore/security/src/main/java/java/security/MessageDigest.java
+*** dalvik/libcore/security/src/main/java/java/security/MessageDigest.java	2011-06-05 05:38:28.464405000 -0700
+--- dalvik1/libcore/security/src/main/java/java/security/MessageDigest.java	2011-04-06 09:07:32.191513000 -0700
+***************
+*** 23,29 ****
+  package java.security;
+  
+  import java.nio.ByteBuffer;
+! 
+  import org.apache.harmony.security.fortress.Engine;
+  import org.apache.harmony.security.internal.nls.Messages;
+  
+--- 23,29 ----
+  package java.security;
+  
+  import java.nio.ByteBuffer;
+! import dalvik.system.Taint;
+  import org.apache.harmony.security.fortress.Engine;
+  import org.apache.harmony.security.internal.nls.Messages;
+  
+***************
+*** 87,96 ****
+--- 87,98 ----
+                  result = (MessageDigest) engine.spi;
+                  result.algorithm = algorithm;
+                  result.provider = engine.provider;
++                 Taint.log("About to hash something with " + algorithm);
+                  return result;
+              } else {
+                  result = new MessageDigestImpl((MessageDigestSpi) engine.spi,
+                          engine.provider, algorithm);
++ 		Taint.log("About to hash something with " + algorithm);
+                  return result;
+              }
+          }
+***************
+*** 227,232 ****
+--- 229,238 ----
+          if (input == null) {
+              throw new NullPointerException(Messages.getString("security.06")); //$NON-NLS-1$
+          }
++ 	int tag = Taint.getTaintByteArray(input);
++ 	if (tag != Taint.TAINT_CLEAR) {
++ 	    Taint.log("Hash " + new String(input));
++ 	}
+          engineUpdate(input, 0, input.length);
+      }
+  
+***************
+*** 239,245 ****
+       * @since Android 1.0
+       */
+      public byte[] digest() {
+!         return engineDigest();
+      }
+  
+      /**
+--- 245,255 ----
+       * @since Android 1.0
+       */
+      public byte[] digest() {
+! 	byte[] data = engineDigest();
+! 	//begin WITH_TAINT_TRACKING
+! 	Taint.addTaintString(new String(data), Taint.TAINT_IMEI);
+! 	//end WITH_TAINT_TRACKING
+!         return data;
+      }
+  
+      /**
