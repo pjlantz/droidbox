@@ -34,7 +34,7 @@ public class DroidBoxTests extends Activity {
 		byte messageDigest[];
     	MessageDigest digest = null;
         try {
-        	// MD5
+            // MD5
             digest = java.security.MessageDigest.getInstance("MD5");
             digest.update(testStr.getBytes());
             messageDigest = digest.digest();
@@ -59,14 +59,13 @@ public class DroidBoxTests extends Activity {
     		url = new URL("http://droidbox.googlecode.com/");
         	urlConnection = (HttpURLConnection) url.openConnection();
     		BufferedReader rd = new BufferedReader(
-    							new InputStreamReader(urlConnection.getInputStream()));
+                                new InputStreamReader(urlConnection.getInputStream()));
     		@SuppressWarnings("unused")
 			String line = "";
             while ((line = rd.readLine()) != null) ;
-    	} catch (IOException e) {
+        } catch (IOException e) {
 			e.printStackTrace();
-		}
-    	finally {
+		} finally {
     	    urlConnection.disconnect();
     	}
     }
