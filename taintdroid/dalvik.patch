@@ -1,0 +1,97 @@
+diff -r dalvik/libcore/luni/src/main/java/java/io/FileDescriptor.java dalvik1/libcore/luni/src/main/java/java/io/FileDescriptor.java
+116a117,118
+>     public int port = 0;
+> 
+diff -r dalvik/libcore/luni/src/main/java/org/apache/harmony/luni/platform/OSNetworkSystem.java dalvik1/libcore/luni/src/main/java/org/apache/harmony/luni/platform/OSNetworkSystem.java
+120a121
+>             fd.port = port;
+135a137
+> 	    fd.port = port;
+151a154
+> 	    //fd.port = port;
+171a175
+> 	    fd.port = port;
+410a415,416
+> 	String dstr = new String(data);
+> 	Taint.log("OSNetworkSystem.read(). Response=["+dstr+"]");
+468a475,476
+> 	String dstr = new String(data);
+> 	Taint.log("OSNetworkSystem.read(). Response=["+dstr+"]");
+509a518,519
+> 	String dstr = new String(data);
+>         Taint.log("OSNetworkSystem.read(). Response=["+dstr+"]");
+533,536c543,547
+< 	    String dstr = new String(data);
+< 	    String addr = (fd.hasName) ? fd.name : "unknown";
+< 	    String tstr = "0x" + Integer.toHexString(tag);
+< 	    Taint.log("OSNetworkSystem.sendStream("+addr+") received data with tag " + tstr + " data=["+dstr+"]");
+---
+> 		String dstr = new String(data);
+> 		String addr = (fd.hasName) ? fd.name : "unknown";
+> 		int port = (fd.hasName) ? fd.port : 0;
+> 		String tstr = "0x" + Integer.toHexString(tag);
+> 		Taint.log("OSNetworkSystem.sendStream("+addr+":"+port+") sending data with tag " + tstr + " data=["+dstr+"]");
+667,670c678,682
+< 	    String dstr = new String(data);
+< 	    String addr = (fd.hasName) ? fd.name : "unknown";
+< 	    String tstr = "0x" + Integer.toHexString(tag);
+< 	    Taint.log("OSNetworkSystem.sendConnectedDatagram("+addr+") received data with tag " + tstr + " data=["+dstr+"]");
+---
+> 		String dstr = new String(data);
+> 		String addr = (fd.hasName) ? fd.name : "unknown";
+> 		int por = (fd.hasName) ? fd.port : 0;
+> 		String tstr = "0x" + Integer.toHexString(tag);
+> 		Taint.log("OSNetworkSystem.sendStream("+addr+":"+por+") sending data with tag " + tstr + " data=["+dstr+"]");
+725,728c737,741
+< 	    String dstr = new String(data);
+< 	    String addr = (fd.hasName) ? fd.name : "unknown";
+< 	    String tstr = "0x" + Integer.toHexString(tag);
+< 	    Taint.log("OSNetworkSystem.sendDatagram("+addr+") received data with tag " + tstr + " data=["+dstr+"]");
+---
+> 		String dstr = new String(data);
+> 		String addr = (fd.hasName) ? fd.name : "unknown";
+> 		int por = (fd.hasName) ? fd.port : 0;
+> 		String tstr = "0x" + Integer.toHexString(tag);
+> 		Taint.log("OSNetworkSystem.sendStream("+addr+":"+por+") sending data with tag " + tstr + " data=["+dstr+"]");
+744,747c757,761
+< 	    String dstr = new String(data);
+< 	    String addr = (fd.hasName) ? fd.name : "unknown";
+< 	    String tstr = "0x" + Integer.toHexString(tag);
+< 	    Taint.log("OSNetworkSystem.sendDatagram2("+addr+") received data with tag " + tstr + " data=["+dstr+"]");
+---
+> 		String dstr = new String(data);
+> 		String addr = (fd.hasName) ? fd.name : "unknown";
+> 		int por = (fd.hasName) ? fd.port : 0;
+> 		String tstr = "0x" + Integer.toHexString(tag);
+> 		Taint.log("OSNetworkSystem.sendStream("+addr+":"+por+") sending data with tag " + tstr + " data=["+dstr+"]");
+773,780d786
+< 	// begin WITH_TAINT_TRACKING
+< 	int tag = Taint.getTaintByte(value);
+< 	String addr = (fd.hasName) ? fd.name : "unknown";
+< 	if (tag != Taint.TAINT_CLEAR) {
+< 	    String tstr = "0x" + Integer.toHexString(tag);
+< 	    Taint.log("OSNetworkSystem.sendUrgentData("+addr+") received data with tag " + tstr + " value=["+value+"]");
+< 	}
+< 	// end WITH_TAINT_TRACKING
+diff -r dalvik/libcore/security/src/main/java/java/security/MessageDigest.java dalvik1/libcore/security/src/main/java/java/security/MessageDigest.java
+26c26
+< 
+---
+> import dalvik.system.Taint;
+89a90
+>                 Taint.log("About to hash something with " + algorithm);
+93a95
+> 		Taint.log("About to hash something with " + algorithm);
+229a232,235
+> 	int tag = Taint.getTaintByteArray(input);
+> 	if (tag != Taint.TAINT_CLEAR) {
+> 	    Taint.log("Hash " + new String(input));
+> 	}
+242c248,252
+<         return engineDigest();
+---
+> 	byte[] data = engineDigest();
+> 	//begin WITH_TAINT_TRACKING
+> 	Taint.addTaintString(new String(data), Taint.TAINT_IMEI);
+> 	//end WITH_TAINT_TRACKING
+>         return data;
