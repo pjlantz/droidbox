@@ -56,16 +56,16 @@ public class DroidBoxTests extends Activity {
     	URL url =  null;
     	HttpURLConnection urlConnection = null;
     	try {
-    		url = new URL("http://droidbox.googlecode.com/");
-        	urlConnection = (HttpURLConnection) url.openConnection();
-    		BufferedReader rd = new BufferedReader(
+            url = new URL("http://droidbox.googlecode.com/");
+            urlConnection = (HttpURLConnection) url.openConnection();
+            BufferedReader rd = new BufferedReader(
                                 new InputStreamReader(urlConnection.getInputStream()));
-    		@SuppressWarnings("unused")
-			String line = "";
+            @SuppressWarnings("unused")
+            String line = "";
             while ((line = rd.readLine()) != null) ;
         } catch (IOException e) {
 			e.printStackTrace();
-		} finally {
+        } finally {
     	    urlConnection.disconnect();
     	}
     }
