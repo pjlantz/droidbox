@@ -3,8 +3,7 @@
       package="droidbox.tests"
       android:versionCode="1"
       android:versionName="1.0">
-
-
+    <uses-permission android:name="android.permission.INTERNET" />
     <application android:icon="@drawable/icon" android:label="@string/app_name">
         <activity android:name=".DroidBoxTests"
                   android:label="@string/app_name">
@@ -13,6 +12,5 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
-
     </application>
 </manifest>
