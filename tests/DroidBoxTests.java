@@ -18,6 +18,7 @@ public class DroidBoxTests extends Activity {
     @Override
     public void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        
         // Run tests
         this.testCryptHash();
         this.testNetworkHTTP();
@@ -53,8 +54,8 @@ public class DroidBoxTests extends Activity {
      */
     public void testNetworkHTTP() {
     	// HttpURLConnection read & write
-    	URL url =  null;
-    	HttpURLConnection urlConnection = null;
+        URL url =  null;
+        HttpURLConnection urlConnection = null;
     	try {
             url = new URL("http://droidbox.googlecode.com/");
             urlConnection = (HttpURLConnection) url.openConnection();
@@ -64,7 +65,7 @@ public class DroidBoxTests extends Activity {
             String line = "";
             while ((line = rd.readLine()) != null) ;
         } catch (IOException e) {
-			e.printStackTrace();
+            e.printStackTrace();
         } finally {
     	    urlConnection.disconnect();
     	}
