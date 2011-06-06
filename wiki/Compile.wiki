@@ -137,4 +137,6 @@ When emulator has booted up:
 
 Applying the patch on TaintDroid is done by issuing:
 
-_patch -p0 -i dalvik.path_ in the _tdroid/tdroid-2.1_r2.1p/ directory. 
+{{{
+patch -p0 -i dalvik.patch in _~/tdroid/tdroid-2.1_r2.1p/
+}}}
