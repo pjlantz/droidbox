@@ -10,7 +10,6 @@ Start with:
 % repo sync
 ... wait
 
-
 % . ./build/envsetup.sh
 % lunch 1
 % make -j4
@@ -23,6 +22,7 @@ Download the TaintDroid local_manifest.xml (http://appanalysis.org/files/local_m
 
 Next, pull the source code and make sure we are working with the right version.
 
+{{{
 % cd ~/tdroid/tdroid-2.1_r2.1p
 % repo sync
 % cd dalvik
@@ -34,11 +34,9 @@ Next, pull the source code and make sure we are working with the right version.
 % git branch --track taintdroid-2.1_r2.1p github/taintdroid-2.1_r2.1p
 % git checkout taintdroid-2.1_r2.1p
 % git pull # (just to be safe)
+}}}
 
-
-ext2 support is not currently enabled for the SDcard; however the code exists in android-2.1_r2.1p.
-The following simple patch to the system/core directory enable ext2/ext3 support for the SDcard and ensures it is
-mounted with user_xattr. It is probably easiest to make the changes by hand as opposed to applying the change as a patch.
+ext2 support is not currently enabled for the SDcard; however the code exists in android-2.1_r2.1p. The following simple patch to the _system/core_ directory enable ext2/ext3 support for the SDcard and ensures it is mounted with user_xattr. It is probably easiest to make the changes by hand as opposed to applying the change as a patch.
 
 {{{
 diff --git a/vold/volmgr.c b/vold/volmgr.c
@@ -70,6 +68,7 @@ index fe3b2bb..8979c70 100644
     devpath, vol->mount_point);
 }}}
 
+{{{
 % cd ~
 % wget http://www.appanalysis.org/files/yaffs_xattr.patch
 ...
@@ -118,6 +117,7 @@ WITH_TAINT_FAST := true
 % lunch 1
 % make clean
 % make -j4
+}}}
 
 Next step is to start the emulator with the compiled kernel and TaintDroid system image.
 
