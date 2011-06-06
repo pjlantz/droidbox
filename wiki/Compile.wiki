@@ -1,0 +1,12 @@
+#summary One-sentence summary of this page.
+
+= Compiling TaintDroid =
+
+Add your content here.
+
+
+= Applying patch =
+
+Applying the patch on TaintDroid is done by issuing:
+
+_patch -p0 -i dalvik.path_ in the _tdroid/tdroid-2.1_r2.1p/ directory. 
