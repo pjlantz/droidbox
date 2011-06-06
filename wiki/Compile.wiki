@@ -3,12 +3,12 @@
 = Compiling TaintDroid =
 
 === Start with: ===
-
+{{{
 % mkdir -p ~/tdroid/tdroid-2.1_r2.1p
 % cd ~/tdroid/tdroid-2.1_r2.1p
 % repo init -u git://android.git.kernel.org/platform/manifest.git -b android-2.1_r2.1p
 % repo sync
-
+}}}
 ... wait
 
 % . ./build/envsetup.sh
