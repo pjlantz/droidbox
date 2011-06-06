@@ -135,7 +135,7 @@ While booting up, issue:
 When emulator is booted up:
 
 {{{
-% wget http://www.appanalysis.org/files/TaintDroidNotify.apk
+% wget http://droidbox.googlecode.com/files/TaintDroidNotify.apk
 % adb install TaintDroidNotify.apk
 }}}
 
