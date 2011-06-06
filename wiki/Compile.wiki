@@ -19,8 +19,7 @@ Start with:
 ... ensure the build works
 }}}
 
-Download the TaintDroid local_manifest.xml (http://appanalysis.org/files/local_manifest.xml) and place
-it in ~/tdroid/tdroid-2.1_r2.1p/.repo or copy and paste the following content into .repo/local_manifest.xml.
+Download the TaintDroid local_manifest.xml (http://appanalysis.org/files/local_manifest.xml) and place it in _tdroid/tdroid-2.1_r2.1p/.repo_.
 
 Next, pull the source code and make sure we are working with the right version.
 
