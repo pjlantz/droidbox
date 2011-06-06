@@ -4,7 +4,7 @@
 
 === Start with: ===
 
-{{{% mkdir -p ~/tdroid/tdroid-2.1_r2.1p
+% mkdir -p ~/tdroid/tdroid-2.1_r2.1p
 % cd ~/tdroid/tdroid-2.1_r2.1p
 % repo init -u git://android.git.kernel.org/platform/manifest.git -b android-2.1_r2.1p
 % repo sync
@@ -16,7 +16,7 @@
 % make -j4
 ... wait
 % emulator
-... ensure the build works}}}
+... ensure the build works
 
 Download the TaintDroid local_manifest.xml (http://appanalysis.org/files/local_manifest.xml) and place
 it in ~/tdroid/tdroid-2.1_r2.1p/.repo or copy and paste the following content into .repo/local_manifest.xml.
@@ -40,6 +40,7 @@ ext2 support is not currently enabled for the SDcard; however the code exists in
 The following simple patch to the system/core directory enable ext2/ext3 support for the SDcard and ensures it is
 mounted with user_xattr. It is probably easiest to make the changes by hand as opposed to applying the change as a patch.
 
+{{{
 diff --git a/vold/volmgr.c b/vold/volmgr.c
 index deb680e..a5f5789 100644
 --- a/vold/volmgr.c
@@ -67,7 +68,7 @@ index fe3b2bb..8979c70 100644
         if (rc && errno == EROFS) {
             LOGE("ext_mount(%s, %s): Read only filesystem - retrying mount RO",
     devpath, vol->mount_point);
-
+}}}
 
 % cd ~
 % wget http://www.appanalysis.org/files/yaffs_xattr.patch
