@@ -145,4 +145,13 @@ Applying the patch on TaintDroid is done by issuing:
 {{{
 patch -p0 -i dalvik.patch
 }}}
-in _~/tdroid/tdroid-2.1_r2.1p/_.
+in _~/tdroid/tdroid-2.1_r2.1p/_. It then needs to be compiled once again with:
+
+{{{
+% . ./build/envsetup.sh
+% lunch 1
+% make clean
+% make -j4
+}}}
+
+Copy the system image and run in the emulator as described above.
