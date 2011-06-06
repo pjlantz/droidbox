@@ -4,10 +4,10 @@
 
 === Start with: ===
 
-* % mkdir -p ~/tdroid/tdroid-2.1_r2.1p
-* % cd ~/tdroid/tdroid-2.1_r2.1p
-* % repo init -u git://android.git.kernel.org/platform/manifest.git -b android-2.1_r2.1p
-* % repo sync
+{{{% mkdir -p ~/tdroid/tdroid-2.1_r2.1p
+% cd ~/tdroid/tdroid-2.1_r2.1p
+% repo init -u git://android.git.kernel.org/platform/manifest.git -b android-2.1_r2.1p
+% repo sync
 
 ... wait
 
@@ -16,7 +16,7 @@
 % make -j4
 ... wait
 % emulator
-... ensure the build works
+... ensure the build works}}}
 
 Download the TaintDroid local_manifest.xml (http://appanalysis.org/files/local_manifest.xml) and place
 it in ~/tdroid/tdroid-2.1_r2.1p/.repo or copy and paste the following content into .repo/local_manifest.xml.
