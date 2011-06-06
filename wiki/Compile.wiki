@@ -124,11 +124,15 @@ Next step is to start the emulator with the compiled kernel and TaintDroid syste
 {{{
 % emulator -kernel ~/zImage -image ~/tdroid/tdroid-2.1_r2.1p/out/target/product/generic/system.img &
 }}}
+
 While booting up, issue:
+
 {{{
 % adb shell setprop dalvik.vm.execution-mode int:portable
-}}
+}}}
+
 When emulator is booted up:
+
 {{{
 % wget http://www.appanalysis.org/files/TaintDroidNotify.apk
 % adb install TaintDroidNotify.apk
