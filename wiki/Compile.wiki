@@ -155,4 +155,4 @@ in _~/tdroid/tdroid-2.1_r2.1p/_. It then needs to be compiled once again with:
 % make -j4
 }}}
 
-Copy the system image and run in the emulator as described above.
+Copy the system image and run the emulator as described above.
