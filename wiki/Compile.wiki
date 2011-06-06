@@ -71,7 +71,7 @@ index fe3b2bb..8979c70 100644
 
 {{{
 % cd ~
-% wget http://www.appanalysis.org/files/yaffs_xattr.patch
+% wget http://droidbox.googlecode.com/files/yaffs_xattr.patch
 ...
 % cd ~/tdroid/tdroid-2.1_r2.1p
 % git clone git://android.git.kernel.org/kernel/common.git
