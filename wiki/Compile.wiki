@@ -1,4 +1,5 @@
 #summary Compiling TaintDroid and applying patch
+#labels Featured
 
 = Compiling TaintDroid =
 
