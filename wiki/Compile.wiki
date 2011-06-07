@@ -151,7 +151,6 @@ in _~/tdroid/tdroid-2.1_r2.1p/_. It then needs to be compiled once again with:
 {{{
 % . ./build/envsetup.sh
 % lunch 1
-% make clean
 % make -j4
 }}}
 
