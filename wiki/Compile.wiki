@@ -120,7 +120,7 @@ WITH_TAINT_FAST := true
 % make -j4
 }}}
 
-Next step is to start the emulator with the compiled kernel and TaintDroid system image.
+Next step is to start the emulator with the compiled kernel and TaintDroid system image. Before doing that setup and AVD and copy ~/tdroid/tdroid-2.1_r2.1p/out/target/product/generic/ramdisk.img to the directory where emulator resides.
 
 {{{
 % emulator -kernel ~/zImage -image ~/tdroid/tdroid-2.1_r2.1p/out/target/product/generic/system.img &
