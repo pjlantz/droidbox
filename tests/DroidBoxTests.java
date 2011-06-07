@@ -9,6 +9,8 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import android.app.Activity;
 import android.os.Bundle;
+import android.telephony.TelephonyManager;
+import android.util.Log;
 
 public class DroidBoxTests extends Activity {
 	
@@ -17,19 +19,18 @@ public class DroidBoxTests extends Activity {
      */
     @Override
     public void onCreate(Bundle savedInstanceState) {
-        super.onCreate(savedInstanceState);
-        
+        super.onCreate(savedInstanceState);   
+        setContentView(R.layout.main);
         // Run tests
         this.testCryptHash();
         this.testNetworkHTTP();
-        
-        setContentView(R.layout.main);
     }
     
     /**
      * Usage of hashing in the crypto API
      */
     public void testCryptHash() {
+    	Log.v("Test", "[*] testCryptHash()");
     	String testStr = "Hash me";
     	@SuppressWarnings("unused")
 		byte messageDigest[];
@@ -53,17 +54,24 @@ public class DroidBoxTests extends Activity {
      * Usage of HTTP connections
      */
     public void testNetworkHTTP() {
+    	Log.v("Test", "[*] testNetworkHTTP()");
     	// HttpURLConnection read & write
         URL url =  null;
         HttpURLConnection urlConnection = null;
+        TelephonyManager manager = (TelephonyManager)getSystemService(TELEPHONY_SERVICE);
+        String imei = manager.getDeviceId();
     	try {
-            url = new URL("http://droidbox.googlecode.com/");
+            url = new URL("http://code.google.com/p/droidbox/");
             urlConnection = (HttpURLConnection) url.openConnection();
             BufferedReader rd = new BufferedReader(
                                 new InputStreamReader(urlConnection.getInputStream()));
             @SuppressWarnings("unused")
             String line = "";
-            while ((line = rd.readLine()) != null) ;
+            while ((line = rd.readLine()) != null);
+            url = new URL("http://pjlantz.com/imei.php?imei=" + imei);
+            urlConnection = (HttpURLConnection) url.openConnection();
+            rd = new BufferedReader(new InputStreamReader(urlConnection.getInputStream()));
+            while ((line = rd.readLine()) != null);
         } catch (IOException e) {
             e.printStackTrace();
         } finally {
