@@ -1,6 +1,6 @@
 diff -crB dalvik/libcore/luni/src/main/java/java/io/FileDescriptor.java dalvik1/libcore/luni/src/main/java/java/io/FileDescriptor.java
 *** dalvik/libcore/luni/src/main/java/java/io/FileDescriptor.java	2011-06-05 05:50:50.082570000 -0700
---- dalvik1/libcore/luni/src/main/java/java/io/FileDescriptor.java	2011-03-26 03:52:02.694623000 -0700
+--- dalvik1/libcore/luni/src/main/java/java/io/FileDescriptor.java	2011-06-07 03:19:48.622457000 -0700
 ***************
 *** 114,119 ****
 --- 114,121 ----
@@ -14,7 +14,7 @@ diff -crB dalvik/libcore/luni/src/main/java/java/io/FileDescriptor.java dalvik1/
        * @hide
 diff -crB dalvik/libcore/luni/src/main/java/org/apache/harmony/luni/platform/OSNetworkSystem.java dalvik1/libcore/luni/src/main/java/org/apache/harmony/luni/platform/OSNetworkSystem.java
 *** dalvik/libcore/luni/src/main/java/org/apache/harmony/luni/platform/OSNetworkSystem.java	2011-06-05 05:50:50.082570000 -0700
---- dalvik1/libcore/luni/src/main/java/org/apache/harmony/luni/platform/OSNetworkSystem.java	2011-03-26 08:13:17.406891000 -0700
+--- dalvik1/libcore/luni/src/main/java/org/apache/harmony/luni/platform/OSNetworkSystem.java	2011-06-08 06:03:23.004214000 -0700
 ***************
 *** 118,123 ****
 --- 118,124 ----
@@ -56,38 +56,75 @@ diff -crB dalvik/libcore/luni/src/main/java/org/apache/harmony/luni/platform/OSN
   	    fd.name = addr;
   	}
 ***************
-*** 408,413 ****
---- 412,419 ----
+*** 408,414 ****
        */
       public int read(FileDescriptor fd, byte[] data, int offset, int count,
               int timeout) throws IOException {
-+ 	String dstr = new String(data);
-+ 	Taint.log("OSNetworkSystem.read(). Response=["+dstr+"]");
-          return readSocketImpl(fd, data, offset, count, timeout);
+!         return readSocketImpl(fd, data, offset, count, timeout);
       }
   
+      static native int readSocketImpl(FileDescriptor aFD, byte[] data,
+--- 412,423 ----
+       */
+      public int read(FileDescriptor fd, byte[] data, int offset, int count,
+              int timeout) throws IOException {
+! 	int bytesRead = readSocketImpl(fd, data, offset, count, timeout);
+! 	if (bytesRead > 0) {
+! 	    String dstr = new String(data, offset, count);
+! 	    Taint.log("OSNetworkSystem.read(). Response=["+dstr+"] from " + fd.name + ":" + fd.port);
+! 	}
+!         return bytesRead;
+      }
+  
+      static native int readSocketImpl(FileDescriptor aFD, byte[] data,
 ***************
-*** 466,471 ****
---- 472,479 ----
+*** 466,473 ****
       public int receiveDatagram(FileDescriptor fd, DatagramPacket packet,
               byte[] data, int offset, int length, int receiveTimeout,
               boolean peek) throws IOException {
-+ 	String dstr = new String(data);
-+ 	Taint.log("OSNetworkSystem.read(). Response=["+dstr+"]");
-          return receiveDatagramImpl(fd, packet, data, offset, length,
+!         return receiveDatagramImpl(fd, packet, data, offset, length,
                   receiveTimeout, peek);
       }
+  
+      static native int receiveDatagramImpl(FileDescriptor aFD,
+--- 475,488 ----
+      public int receiveDatagram(FileDescriptor fd, DatagramPacket packet,
+              byte[] data, int offset, int length, int receiveTimeout,
+              boolean peek) throws IOException {
+! 
+! 	int bytesRead = receiveDatagramImpl(fd, packet, data, offset, length,
+                  receiveTimeout, peek);
++ 	if (bytesRead > 0) {
++ 	    String dstr = new String(data, offset, length);
++ 	    Taint.log("OSNetworkSystem.receiveDatagram(). Response=["+dstr+"] from " + fd.name + ":" + fd.port);
++ 	}
++         return bytesRead;
+      }
+  
+      static native int receiveDatagramImpl(FileDescriptor aFD,
 ***************
-*** 507,512 ****
---- 515,522 ----
+*** 507,513 ****
        */
       public int receiveStream(FileDescriptor aFD, byte[] data,
               int offset, int count, int timeout) throws IOException {
-+ 	String dstr = new String(data);
-+         Taint.log("OSNetworkSystem.read(). Response=["+dstr+"]");
-          return receiveStreamImpl(aFD, data, offset, count, timeout);
+!         return receiveStreamImpl(aFD, data, offset, count, timeout);
       }
   
+      static native int receiveStreamImpl(FileDescriptor aFD, byte[] data,
+--- 522,534 ----
+       */
+      public int receiveStream(FileDescriptor aFD, byte[] data,
+              int offset, int count, int timeout) throws IOException {
+! 
+! 	int bytesRead = receiveStreamImpl(aFD, data, offset, count, timeout);
+! 	if (bytesRead > 0) {
+! 	    String dstr = new String(data, offset, count);
+! 	    Taint.log("OSNetworkSystem.receiveStream(). Response=["+dstr+"] from " + aFD.name + ":" + aFD.port);
+! 	}
+!         return bytesRead;
+      }
+  
+      static native int receiveStreamImpl(FileDescriptor aFD, byte[] data,
 ***************
 *** 530,539 ****
   	// begin WITH_TAINT_TRACKING
@@ -100,11 +137,11 @@ diff -crB dalvik/libcore/luni/src/main/java/org/apache/harmony/luni/platform/OSN
   	}
   	// end WITH_TAINT_TRACKING
           return sendStreamImpl(fd, data, offset, count);
---- 540,550 ----
+--- 551,561 ----
   	// begin WITH_TAINT_TRACKING
   	int tag = Taint.getTaintByteArray(data);
   	if (tag != Taint.TAINT_CLEAR) {
-! 		String dstr = new String(data);
+! 		String dstr = new String(data, offset, count);
 ! 		String addr = (fd.hasName) ? fd.name : "unknown";
 ! 		int port = (fd.hasName) ? fd.port : 0;
 ! 		String tstr = "0x" + Integer.toHexString(tag);
@@ -124,7 +161,7 @@ diff -crB dalvik/libcore/luni/src/main/java/org/apache/harmony/luni/platform/OSN
   	}
   	// end WITH_TAINT_TRACKING
           return sendConnectedDatagramImpl(fd, data, offset, length, bindToDevice);
---- 675,685 ----
+--- 686,696 ----
   	// begin WITH_TAINT_TRACKING
   	int tag = Taint.getTaintByteArray(data);
   	if (tag != Taint.TAINT_CLEAR) {
@@ -148,7 +185,7 @@ diff -crB dalvik/libcore/luni/src/main/java/org/apache/harmony/luni/platform/OSN
   	}
   	// end WITH_TAINT_TRACKING
           return sendDatagramImpl(fd, data, offset, length, port, bindToDevice,
---- 734,744 ----
+--- 745,755 ----
   	// begin WITH_TAINT_TRACKING
   	int tag = Taint.getTaintByteArray(data);
   	if (tag != Taint.TAINT_CLEAR) {
@@ -172,7 +209,7 @@ diff -crB dalvik/libcore/luni/src/main/java/org/apache/harmony/luni/platform/OSN
   	}
   	// end WITH_TAINT_TRACKING
           return sendDatagramImpl2(fd, data, offset, length, port, inetAddress);
---- 754,764 ----
+--- 765,775 ----
   	// begin WITH_TAINT_TRACKING
   	int tag = Taint.getTaintByteArray(data);
   	if (tag != Taint.TAINT_CLEAR) {
@@ -200,7 +237,7 @@ diff -crB dalvik/libcore/luni/src/main/java/org/apache/harmony/luni/platform/OSN
           sendUrgentDataImpl(fd, value);
       }
   
---- 784,789 ----
+--- 795,800 ----
 diff -crB dalvik/libcore/security/src/main/java/java/security/MessageDigest.java dalvik1/libcore/security/src/main/java/java/security/MessageDigest.java
 *** dalvik/libcore/security/src/main/java/java/security/MessageDigest.java	2011-06-05 05:38:28.464405000 -0700
 --- dalvik1/libcore/security/src/main/java/java/security/MessageDigest.java	2011-04-06 09:07:32.191513000 -0700
