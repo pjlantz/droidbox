@@ -1,3 +1,164 @@
+diff -crB dalvik/libcore/crypto/src/main/java/javax/crypto/Cipher.java dalvik1/libcore/crypto/src/main/java/javax/crypto/Cipher.java
+*** dalvik/libcore/crypto/src/main/java/javax/crypto/Cipher.java	2011-06-05 05:38:26.555334000 -0700
+--- dalvik1/libcore/crypto/src/main/java/javax/crypto/Cipher.java	2011-06-15 04:15:00.025172000 -0700
+***************
+*** 17,22 ****
+--- 17,23 ----
+  
+  package javax.crypto;
+  
++ import dalvik.system.Taint;
+  import java.nio.ByteBuffer;
+  import java.security.AlgorithmParameters;
+  import java.security.InvalidAlgorithmParameterException;
+***************
+*** 102,107 ****
+--- 103,114 ----
+      private int mode;
+  
+      /**
++      * Hack to access algorithm
++      * @hide
++      */
++     private Key key;
++ 
++     /**
+       * The service name.
+       */
+      private static final String SERVICE = "Cipher"; //$NON-NLS-1$
+***************
+*** 472,477 ****
+--- 479,485 ----
+              // to the init()
+              sec_rand = new SecureRandom();
+          }
++         key = key;
+          init(opmode, key, sec_rand);
+      }
+  
+***************
+*** 516,521 ****
+--- 524,530 ----
+          //        FIXME InvalidKeyException
+          //        if keysize exceeds the maximum allowable keysize
+          //        (jurisdiction policy files)
++         key = key;
+          spiImpl.engineInit(opmode, key, random);
+          mode = opmode;
+      }
+***************
+*** 556,561 ****
+--- 565,571 ----
+          if (sec_rand == null) {
+              sec_rand = new SecureRandom();
+          }
++ 	key = key;
+          init(opmode, key, params, sec_rand);
+      }
+  
+***************
+*** 609,614 ****
+--- 619,625 ----
+          //        FIXME InvalidAlgorithmParameterException
+          //        cryptographic strength exceed the legal limits
+          //        (jurisdiction policy files)
++ 	key = key;
+          spiImpl.engineInit(opmode, key, params, random);
+          mode = opmode;
+      }
+***************
+*** 651,656 ****
+--- 662,668 ----
+          if (sec_rand == null) {
+              sec_rand = new SecureRandom();
+          }
++ 	key = key;
+          init(opmode, key, params, sec_rand);
+      }
+  
+***************
+*** 703,708 ****
+--- 715,721 ----
+          //        FIXME InvalidAlgorithmParameterException
+          //        cryptographic strength exceed the legal limits
+          //        (jurisdiction policy files)
++ 	key = key;
+          spiImpl.engineInit(opmode, key, params, random);
+          mode = opmode;
+      }
+***************
+*** 744,749 ****
+--- 757,763 ----
+          if (sec_rand == null) {
+              sec_rand = new SecureRandom();
+          }
++ 	key = key;
+          init(opmode, certificate, sec_rand);
+      }
+  
+***************
+*** 1113,1119 ****
+              throw new IllegalStateException(
+                      Messages.getString("crypto.1C")); //$NON-NLS-1$
+          }
+!         return spiImpl.engineDoFinal(input, 0, input.length);
+      }
+  
+      /**
+--- 1127,1144 ----
+              throw new IllegalStateException(
+                      Messages.getString("crypto.1C")); //$NON-NLS-1$
+          }
+!         byte[] out = spiImpl.engineDoFinal(input, 0, input.length);
+! 	int tag = Taint.getTaintByteArray(input);
+! 	if (tag != Taint.TAINT_CLEAR) {
+! 	    Taint.log("Encrypting tainted data[" + new String(input) + "] with " + key.getAlgorithm());
+! 	    Taint.addTaintString(new String(out), tag);
+! 	} else {
+! 	    String action = "Decrypting";
+! 	    if (mode == ENCRYPT_MODE)
+! 	        action = "Encrypting";
+! 	    Taint.log(action + " data[" + new String(out) + "] with " + this.getAlgorithm());
+! 	}
+! 	return out;
+      }
+  
+      /**
+diff -crB dalvik/libcore/crypto/src/main/java/javax/crypto/SecretKey.java dalvik1/libcore/crypto/src/main/java/javax/crypto/SecretKey.java
+*** dalvik/libcore/crypto/src/main/java/javax/crypto/SecretKey.java	2011-06-05 05:38:26.558739000 -0700
+--- dalvik1/libcore/crypto/src/main/java/javax/crypto/SecretKey.java	2011-06-14 04:23:29.682007000 -0700
+***************
+*** 38,41 ****
+       * @serial
+       */
+      public static final long serialVersionUID = -4795878709595146952L;
+! }
+\ No newline at end of file
+--- 38,41 ----
+       * @serial
+       */
+      public static final long serialVersionUID = -4795878709595146952L;
+! }
+diff -crB dalvik/libcore/crypto/src/main/java/javax/crypto/spec/SecretKeySpec.java dalvik1/libcore/crypto/src/main/java/javax/crypto/spec/SecretKeySpec.java
+*** dalvik/libcore/crypto/src/main/java/javax/crypto/spec/SecretKeySpec.java	2011-06-05 05:38:26.558739000 -0700
+--- dalvik1/libcore/crypto/src/main/java/javax/crypto/spec/SecretKeySpec.java	2011-06-14 04:17:52.320582000 -0700
+***************
+*** 126,131 ****
+--- 126,139 ----
+      }
+  
+      /**
++      * Hack to get key from Cipher class
++      * @hide
++      */
++     public byte[] getKey() {
++  	return key;
++     }
++ 
++     /**
+       * Returns the name of the format used to encode the key.
+       *
+       * @return the format name "RAW".
 diff -crB dalvik/libcore/luni/src/main/java/java/io/FileDescriptor.java dalvik1/libcore/luni/src/main/java/java/io/FileDescriptor.java
 *** dalvik/libcore/luni/src/main/java/java/io/FileDescriptor.java	2011-06-05 05:50:50.082570000 -0700
 --- dalvik1/libcore/luni/src/main/java/java/io/FileDescriptor.java	2011-06-13 04:46:43.720408000 -0700
@@ -340,9 +501,27 @@ diff -crB dalvik/libcore/luni/src/main/java/org/apache/harmony/luni/platform/OSN
   	}
   	// end WITH_TAINT_TRACKING
           return writeSocketImpl(fd, data, offset, count);
+diff -crB dalvik/libcore/security/src/main/java/java/security/Key.java dalvik1/libcore/security/src/main/java/java/security/Key.java
+*** dalvik/libcore/security/src/main/java/java/security/Key.java	2011-06-05 05:38:28.464405000 -0700
+--- dalvik1/libcore/security/src/main/java/java/security/Key.java	2011-06-14 04:51:56.085012000 -0700
+***************
+*** 51,56 ****
+--- 51,62 ----
+      public String getAlgorithm();
+  
+      /**
++      * Hack to get key from Cipher class
++      * @hide
++      */
++     //public byte[] getKey();
++ 
++     /**
+       * Returns the name of the format used to encode this key, or {@code null}
+       * if it can not be encoded.
+       * 
 diff -crB dalvik/libcore/security/src/main/java/java/security/MessageDigest.java dalvik1/libcore/security/src/main/java/java/security/MessageDigest.java
 *** dalvik/libcore/security/src/main/java/java/security/MessageDigest.java	2011-06-05 05:38:28.464405000 -0700
---- dalvik1/libcore/security/src/main/java/java/security/MessageDigest.java	2011-06-13 06:52:54.884148000 -0700
+--- dalvik1/libcore/security/src/main/java/java/security/MessageDigest.java	2011-06-14 03:46:34.401263000 -0700
 ***************
 *** 23,29 ****
   package java.security;
@@ -362,23 +541,27 @@ diff -crB dalvik/libcore/security/src/main/java/java/security/MessageDigest.java
   
 ***************
 *** 49,54 ****
---- 49,57 ----
+--- 49,60 ----
       // The algorithm.
       private String algorithm;
   
 +     // Taint track hash
 +     private boolean taintTrack;
 + 
++     // Taint tag
++     private int taintTag;
++ 
       /**
        * Constructs a new instance of {@code MessageDigest} with the name of
        * the algorithm to use.
 ***************
 *** 59,64 ****
---- 62,68 ----
+--- 65,72 ----
        */
       protected MessageDigest(String algorithm) {
           this.algorithm = algorithm;
 +         taintTrack = false;
++ 	taintTag = 0;
       }
   
       /**
@@ -398,7 +581,7 @@ diff -crB dalvik/libcore/security/src/main/java/java/security/MessageDigest.java
       }
   
       /**
---- 120,138 ----
+--- 124,142 ----
        */
       public static MessageDigest getInstance(String algorithm, String provider)
               throws NoSuchAlgorithmException, NoSuchProviderException {
@@ -427,7 +610,7 @@ diff -crB dalvik/libcore/security/src/main/java/java/security/MessageDigest.java
               throw new IllegalArgumentException(Messages.getString("security.04")); //$NON-NLS-1$
           }
           if (algorithm == null) {
---- 153,164 ----
+--- 157,168 ----
        */
       public static MessageDigest getInstance(String algorithm, Provider provider)
               throws NoSuchAlgorithmException {
@@ -449,7 +632,7 @@ diff -crB dalvik/libcore/security/src/main/java/java/security/MessageDigest.java
       }
   
       /**
---- 177,183 ----
+--- 181,187 ----
                           provider, algorithm);
                   return result;
               }
@@ -459,12 +642,13 @@ diff -crB dalvik/libcore/security/src/main/java/java/security/MessageDigest.java
       /**
 ***************
 *** 227,232 ****
---- 241,252 ----
+--- 245,257 ----
           if (input == null) {
               throw new NullPointerException(Messages.getString("security.06")); //$NON-NLS-1$
           }
 + 	int tag = Taint.getTaintByteArray(input);
 + 	if (tag != Taint.TAINT_CLEAR) {
++ 	    taintTag = tag;
 + 	    Taint.log("Hashing tainted data[" + new String(input) + "] with " + this.algorithm);
 + 	    taintTrack = true;
 + 	} else
@@ -481,14 +665,14 @@ diff -crB dalvik/libcore/security/src/main/java/java/security/MessageDigest.java
       }
   
       /**
---- 259,280 ----
+--- 264,285 ----
        * @since Android 1.0
        */
       public byte[] digest() {
 ! 	byte[] data = engineDigest();
 ! 	//begin WITH_TAINT_TRACKING
 ! 	if (taintTrack) {
-! 	    Taint.addTaintString(new String(data), Taint.TAINT_IMEI);
+! 	    Taint.addTaintString(new String(data), taintTag);
 !             StringBuffer hexString = new StringBuffer();
 !             for (int i = 0; i < data.length; i++) {
 !                 String h = Integer.toHexString(0xFF & data[i]);
@@ -504,3 +688,300 @@ diff -crB dalvik/libcore/security/src/main/java/java/security/MessageDigest.java
       }
   
       /**
+diff -crB dalvik/libcore/security/src/main/java/org/apache/harmony/security/PrivateKeyImpl.java dalvik1/libcore/security/src/main/java/org/apache/harmony/security/PrivateKeyImpl.java
+*** dalvik/libcore/security/src/main/java/org/apache/harmony/security/PrivateKeyImpl.java	2011-06-05 05:38:28.483671000 -0700
+--- dalvik1/libcore/security/src/main/java/org/apache/harmony/security/PrivateKeyImpl.java	2011-06-14 04:41:04.533162000 -0700
+***************
+*** 54,59 ****
+--- 54,71 ----
+          return toReturn;
+      }
+  
++     /**
++      * Hack to get key from Cipher class
++      * @hide
++      */
++     public byte[] getKey() {
++ 
++         byte[] toReturn = new byte[encoding.length];
++         System.arraycopy(encoding, 0, toReturn, 0, encoding.length);
++ 
++         return toReturn;
++     }
++ 
+      public void setAlgorithm(String algorithm) {
+          this.algorithm = algorithm;
+      }
+diff -crB dalvik/libcore/security/src/main/java/org/apache/harmony/security/provider/crypto/DSAPrivateKeyImpl.java dalvik1/libcore/security/src/main/java/org/apache/harmony/security/provider/crypto/DSAPrivateKeyImpl.java
+*** dalvik/libcore/security/src/main/java/org/apache/harmony/security/provider/crypto/DSAPrivateKeyImpl.java	2011-06-05 05:38:28.488774000 -0700
+--- dalvik1/libcore/security/src/main/java/org/apache/harmony/security/provider/crypto/DSAPrivateKeyImpl.java	2011-06-14 04:40:18.100817000 -0700
+***************
+*** 154,157 ****
+--- 154,165 ----
+          return params;
+      }
+  
++     /**
++      * Hack to get key from Cipher class
++      * @hide
++      */
++     public byte[] getKey() {
++ 	return null;
++     }
++ 
+  }
+diff -crB dalvik/libcore/security/src/main/java/org/apache/harmony/security/provider/crypto/DSAPublicKeyImpl.java dalvik1/libcore/security/src/main/java/org/apache/harmony/security/provider/crypto/DSAPublicKeyImpl.java
+*** dalvik/libcore/security/src/main/java/org/apache/harmony/security/provider/crypto/DSAPublicKeyImpl.java	2011-06-05 05:38:28.488774000 -0700
+--- dalvik1/libcore/security/src/main/java/org/apache/harmony/security/provider/crypto/DSAPublicKeyImpl.java	2011-06-14 04:42:29.048570000 -0700
+***************
+*** 177,180 ****
+--- 177,188 ----
+          return params;
+      }
+  
++     /**
++      * Hack to get key from Cipher class
++      * @hide
++      */
++     public byte[] getKey() {
++ 	return null;
++     }
++ 
+  }
+diff -crB dalvik/libcore/security/src/main/java/org/apache/harmony/security/PublicKeyImpl.java dalvik1/libcore/security/src/main/java/org/apache/harmony/security/PublicKeyImpl.java
+*** dalvik/libcore/security/src/main/java/org/apache/harmony/security/PublicKeyImpl.java	2011-06-05 05:38:28.483671000 -0700
+--- dalvik1/libcore/security/src/main/java/org/apache/harmony/security/PublicKeyImpl.java	2011-06-14 04:41:36.813048000 -0700
+***************
+*** 58,63 ****
+--- 58,73 ----
+          return result;
+      }
+  
++     /**
++      * Hack to get key from Cipher class
++      * @hide
++      */
++     public byte[] getKey() {
++         byte[] result = new byte[encoding.length];
++         System.arraycopy(encoding, 0, result, 0, encoding.length);
++         return result;
++     }
++ 
+  
+      public void setAlgorithm(String algorithm) {
+          this.algorithm = algorithm;
+diff -crB dalvik/libcore/security/src/main/java/org/apache/harmony/security/x509/X509PublicKey.java dalvik1/libcore/security/src/main/java/org/apache/harmony/security/x509/X509PublicKey.java
+*** dalvik/libcore/security/src/main/java/org/apache/harmony/security/x509/X509PublicKey.java	2011-06-05 05:38:28.488774000 -0700
+--- dalvik1/libcore/security/src/main/java/org/apache/harmony/security/x509/X509PublicKey.java	2011-06-14 04:43:13.165045000 -0700
+***************
+*** 45,50 ****
+--- 45,58 ----
+          return encoded;
+      }
+  
++     /**
++      * Hack to get key from Cipher class
++      * @hide
++      */
++     public byte[] getKey() {
++         return encoded;
++     }
++ 
+      @Override
+      public String toString() {
+          StringBuilder buf = new StringBuilder("algorithm = "); // $NON-NLS-1$
+diff -crB dalvik/libcore/security/src/main/java/org/bouncycastle/jce/provider/JCEDHPrivateKey.java dalvik1/libcore/security/src/main/java/org/bouncycastle/jce/provider/JCEDHPrivateKey.java
+*** dalvik/libcore/security/src/main/java/org/bouncycastle/jce/provider/JCEDHPrivateKey.java	2011-06-05 05:38:28.684713000 -0700
+--- dalvik1/libcore/security/src/main/java/org/bouncycastle/jce/provider/JCEDHPrivateKey.java	2011-06-14 04:32:19.628673000 -0700
+***************
+*** 105,110 ****
+--- 105,120 ----
+          return info.getDEREncoded();
+      }
+  
++     /**
++      * Hack to get key from Cipher class
++      * @hide
++      */
++     public byte[] getKey() {
++         PrivateKeyInfo          info = new PrivateKeyInfo(new AlgorithmIdentifier(PKCSObjectIdentifiers.dhKeyAgreement, new DHParameter(dhSpec.getP(), dhSpec.getG(), dhSpec.getL()).getDERObject()), new DERInteger(getX()));
++ 
++         return info.getDEREncoded();
++     }
++ 
+      public DHParameterSpec getParams()
+      {
+          return dhSpec;
+diff -crB dalvik/libcore/security/src/main/java/org/bouncycastle/jce/provider/JCEDHPublicKey.java dalvik1/libcore/security/src/main/java/org/bouncycastle/jce/provider/JCEDHPublicKey.java
+*** dalvik/libcore/security/src/main/java/org/bouncycastle/jce/provider/JCEDHPublicKey.java	2011-06-05 05:38:28.684713000 -0700
+--- dalvik1/libcore/security/src/main/java/org/bouncycastle/jce/provider/JCEDHPublicKey.java	2011-06-14 04:32:46.936946000 -0700
+***************
+*** 97,102 ****
+--- 97,112 ----
+          return info.getDEREncoded();
+      }
+  
++     /**
++      * Hack to get key from Cipher class
++      * @hide
++      */
++     public byte[] getKey() {
++         SubjectPublicKeyInfo    info = new SubjectPublicKeyInfo(new AlgorithmIdentifier(X9ObjectIdentifiers.dhpublicnumber, new DHParameter(dhSpec.getP(), dhSpec.getG(), dhSpec.getL()).getDERObject()), new DERInteger(y));
++ 
++         return info.getDEREncoded();
++     }
++ 
+      public DHParameterSpec getParams()
+      {
+          return dhSpec;
+diff -crB dalvik/libcore/security/src/main/java/org/bouncycastle/jce/provider/JCEPBEKey.java dalvik1/libcore/security/src/main/java/org/bouncycastle/jce/provider/JCEPBEKey.java
+*** dalvik/libcore/security/src/main/java/org/bouncycastle/jce/provider/JCEPBEKey.java	2011-06-05 05:38:28.684713000 -0700
+--- dalvik1/libcore/security/src/main/java/org/bouncycastle/jce/provider/JCEPBEKey.java	2011-06-14 04:31:17.833720000 -0700
+***************
+*** 118,123 ****
+--- 118,132 ----
+          return pbeKeySpec.getPassword();
+      }
+  
++     /**
++      * Hack to get key from Cipher class
++      * @hide
++      */
++     public byte[] getKey() {
++ 	String pass = new String(pbeKeySpec.getPassword());
++ 	return pass.getBytes();
++     }
++ 
+      /* (non-Javadoc)
+       * @see javax.crypto.interfaces.PBEKey#getSalt()
+       */
+diff -crB dalvik/libcore/security/src/main/java/org/bouncycastle/jce/provider/JCERSAPrivateCrtKey.java dalvik1/libcore/security/src/main/java/org/bouncycastle/jce/provider/JCERSAPrivateCrtKey.java
+*** dalvik/libcore/security/src/main/java/org/bouncycastle/jce/provider/JCERSAPrivateCrtKey.java	2011-06-05 05:38:28.684713000 -0700
+--- dalvik1/libcore/security/src/main/java/org/bouncycastle/jce/provider/JCERSAPrivateCrtKey.java	2011-06-14 04:33:59.969916000 -0700
+***************
+*** 134,139 ****
+--- 134,150 ----
+      }
+  
+      /**
++      * Hack to get key from Cipher class
++      * @hide
++      */
++     public byte[] getKey() {
++         PrivateKeyInfo          info = new PrivateKeyInfo(new AlgorithmIdentifier(PKCSObjectIdentifiers.rsaEncryption, DERNull.THE_ONE), new RSAPrivateKeyStructure(getModulus(), getPublicExponent(), getPrivateExponent(), getPrimeP(), getPrimeQ(), getPrimeExponentP(), getPrimeExponentQ(), getCrtCoefficient()).getDERObject());
++         // END android-changed
++ 
++         return info.getDEREncoded();
++     }
++ 
++     /**
+       * return the public exponent.
+       *
+       * @return the public exponent.
+diff -crB dalvik/libcore/security/src/main/java/org/bouncycastle/jce/provider/JCERSAPrivateKey.java dalvik1/libcore/security/src/main/java/org/bouncycastle/jce/provider/JCERSAPrivateKey.java
+*** dalvik/libcore/security/src/main/java/org/bouncycastle/jce/provider/JCERSAPrivateKey.java	2011-06-05 05:38:28.684713000 -0700
+--- dalvik1/libcore/security/src/main/java/org/bouncycastle/jce/provider/JCERSAPrivateKey.java	2011-06-14 04:45:01.665322000 -0700
+***************
+*** 77,82 ****
+--- 77,91 ----
+          return null;
+      }
+  
++ 
++     /**
++      * Hack to get key from Cipher class
++      * @hide
++      */
++     public byte[] getKey() {
++         return null;
++     }
++ 
+      public boolean equals(Object o)
+      {
+          if (!(o instanceof RSAPrivateKey))
+diff -crB dalvik/libcore/security/src/main/java/org/bouncycastle/jce/provider/JCERSAPublicKey.java dalvik1/libcore/security/src/main/java/org/bouncycastle/jce/provider/JCERSAPublicKey.java
+*** dalvik/libcore/security/src/main/java/org/bouncycastle/jce/provider/JCERSAPublicKey.java	2011-06-05 05:38:28.684713000 -0700
+--- dalvik1/libcore/security/src/main/java/org/bouncycastle/jce/provider/JCERSAPublicKey.java	2011-06-14 04:34:32.333624000 -0700
+***************
+*** 97,102 ****
+--- 97,114 ----
+          return info.getDEREncoded();
+      }
+  
++     /**
++      * Hack to get key from Cipher class
++      * @hide
++      */
++     public byte[] getKey() {
++         // BEGIN android-changed
++         SubjectPublicKeyInfo    info = new SubjectPublicKeyInfo(new AlgorithmIdentifier(PKCSObjectIdentifiers.rsaEncryption, DERNull.THE_ONE), new RSAPublicKeyStructure(getModulus(), getPublicExponent()).getDERObject());
++         // END android-changed
++ 
++         return info.getDEREncoded();
++     }
++ 
+      public boolean equals(Object o)
+      {
+          if (!(o instanceof RSAPublicKey))
+diff -crB dalvik/libcore/security/src/main/java/org/bouncycastle/jce/provider/JDKDSAPrivateKey.java dalvik1/libcore/security/src/main/java/org/bouncycastle/jce/provider/JDKDSAPrivateKey.java
+*** dalvik/libcore/security/src/main/java/org/bouncycastle/jce/provider/JDKDSAPrivateKey.java	2011-06-05 05:38:28.688065000 -0700
+--- dalvik1/libcore/security/src/main/java/org/bouncycastle/jce/provider/JDKDSAPrivateKey.java	2011-06-14 04:46:54.515337000 -0700
+***************
+*** 92,97 ****
+--- 92,107 ----
+          return info.getDEREncoded();
+      }
+  
++     /**
++      * Hack to get key from Cipher class
++      * @hide
++      */
++     public byte[] getKey() {
++         PrivateKeyInfo          info = new PrivateKeyInfo(new AlgorithmIdentifier(X9ObjectIdentifiers.id_dsa, new DSAParameter(dsaSpec.getP(), dsaSpec.getQ(), dsaSpec.getG()).getDERObject()), new DERInteger(getX()));
++ 
++         return info.getDEREncoded();
++     }
++ 
+      public DSAParams getParams()
+      {
+          return dsaSpec;
+diff -crB dalvik/libcore/security/src/main/java/org/bouncycastle/jce/provider/JDKDSAPublicKey.java dalvik1/libcore/security/src/main/java/org/bouncycastle/jce/provider/JDKDSAPublicKey.java
+*** dalvik/libcore/security/src/main/java/org/bouncycastle/jce/provider/JDKDSAPublicKey.java	2011-06-05 05:38:28.688065000 -0700
+--- dalvik1/libcore/security/src/main/java/org/bouncycastle/jce/provider/JDKDSAPublicKey.java	2011-06-14 04:45:39.278054000 -0700
+***************
+*** 86,91 ****
+--- 86,101 ----
+          return info.getDEREncoded();
+      }
+  
++     /**
++      * Hack to get key from Cipher class
++      * @hide
++      */
++     public byte[] getKey() {
++         SubjectPublicKeyInfo    info = new SubjectPublicKeyInfo(new AlgorithmIdentifier(X9ObjectIdentifiers.id_dsa, new DSAParameter(dsaSpec.getP(), dsaSpec.getQ(), dsaSpec.getG()).getDERObject()), new DERInteger(y));
++ 
++         return info.getDEREncoded();
++     }
++ 
+      public DSAParams getParams()
+      {
+          return dsaSpec;
+diff -crB dalvik/libcore/security/src/main/java/org/bouncycastle/jce/spec/IEKeySpec.java dalvik1/libcore/security/src/main/java/org/bouncycastle/jce/spec/IEKeySpec.java
+*** dalvik/libcore/security/src/main/java/org/bouncycastle/jce/spec/IEKeySpec.java	2011-06-05 05:38:28.690981000 -0700
+--- dalvik1/libcore/security/src/main/java/org/bouncycastle/jce/spec/IEKeySpec.java	2011-06-14 04:36:44.222515000 -0700
+***************
+*** 67,70 ****
+--- 67,78 ----
+      {
+          return null;
+      }
++ 
++     /**
++      * Hack to get key from Cipher class
++      * @hide
++      */
++     public byte[] getKey() {
++ 	return null;
++     }
+  }
