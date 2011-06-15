@@ -1,6 +1,6 @@
 diff -crB dalvik/libcore/crypto/src/main/java/javax/crypto/Cipher.java dalvik1/libcore/crypto/src/main/java/javax/crypto/Cipher.java
 *** dalvik/libcore/crypto/src/main/java/javax/crypto/Cipher.java	2011-06-05 05:38:26.555334000 -0700
---- dalvik1/libcore/crypto/src/main/java/javax/crypto/Cipher.java	2011-06-15 04:15:00.025172000 -0700
+--- dalvik1/libcore/crypto/src/main/java/javax/crypto/Cipher.java	2011-06-15 07:19:33.426079000 -0700
 ***************
 *** 17,22 ****
 --- 17,23 ----
@@ -112,7 +112,7 @@ diff -crB dalvik/libcore/crypto/src/main/java/javax/crypto/Cipher.java dalvik1/l
 !         byte[] out = spiImpl.engineDoFinal(input, 0, input.length);
 ! 	int tag = Taint.getTaintByteArray(input);
 ! 	if (tag != Taint.TAINT_CLEAR) {
-! 	    Taint.log("Encrypting tainted data[" + new String(input) + "] with " + key.getAlgorithm());
+! 	    Taint.log("Encrypting tainted data[" + new String(input) + "] with " + this.getAlgorithm());
 ! 	    Taint.addTaintString(new String(out), tag);
 ! 	} else {
 ! 	    String action = "Decrypting";
