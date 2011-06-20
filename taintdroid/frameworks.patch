@@ -1,0 +1,89 @@
+diff -crB frameworks/base/api/current.xml frameworks1/base/api/current.xml
+*** frameworks/base/api/current.xml	2011-06-05 05:51:39.000000000 -0700
+--- frameworks1/base/api/current.xml	2011-06-13 04:19:53.000000000 -0700
+***************
+*** 79777,79783 ****
+  <method name="setAudioSource"
+   return="void"
+   abstract="false"
+!  native="true"
+   synchronized="false"
+   static="false"
+   final="false"
+--- 79777,79783 ----
+  <method name="setAudioSource"
+   return="void"
+   abstract="false"
+!  native="false"
+   synchronized="false"
+   static="false"
+   final="false"
+diff -crB frameworks/base/core/java/android/content/ContentResolver.java frameworks1/base/core/java/android/content/ContentResolver.java
+*** frameworks/base/core/java/android/content/ContentResolver.java	2011-06-05 05:40:41.000000000 -0700
+--- frameworks1/base/core/java/android/content/ContentResolver.java	2011-06-20 07:08:36.000000000 -0700
+***************
+*** 33,39 ****
+  import android.accounts.Account;
+  import android.util.Config;
+  import android.util.Log;
+! 
+  import java.io.File;
+  import java.io.FileInputStream;
+  import java.io.FileNotFoundException;
+--- 33,39 ----
+  import android.accounts.Account;
+  import android.util.Config;
+  import android.util.Log;
+! import dalvik.system.Taint;
+  import java.io.File;
+  import java.io.FileInputStream;
+  import java.io.FileNotFoundException;
+***************
+*** 195,200 ****
+--- 195,201 ----
+      public final Cursor query(Uri uri, String[] projection,
+              String selection, String[] selectionArgs, String sortOrder) {
+          IContentProvider provider = acquireProvider(uri);
++ 	Taint.log("Performing query with URI: " + uri.toString());
+          if (provider == null) {
+              return null;
+          }
+diff -crB frameworks/base/core/java/android/database/CursorWrapper.java frameworks1/base/core/java/android/database/CursorWrapper.java
+*** frameworks/base/core/java/android/database/CursorWrapper.java	2011-06-05 05:40:41.000000000 -0700
+--- frameworks1/base/core/java/android/database/CursorWrapper.java	2011-06-20 07:04:12.000000000 -0700
+***************
+*** 20,26 ****
+  import android.database.CharArrayBuffer;
+  import android.net.Uri;
+  import android.os.Bundle;
+! 
+  import java.util.Map;
+  
+  /**
+--- 20,26 ----
+  import android.database.CharArrayBuffer;
+  import android.net.Uri;
+  import android.os.Bundle;
+! import dalvik.system.Taint;
+  import java.util.Map;
+  
+  /**
+***************
+*** 132,138 ****
+      }
+  
+      public String getString(int columnIndex) {
+!         return mCursor.getString(columnIndex);
+      }
+      
+      public void copyStringToBuffer(int columnIndex, CharArrayBuffer buffer) {
+--- 132,140 ----
+      }
+  
+      public String getString(int columnIndex) {
+!         String data = mCursor.getString(columnIndex);
+! 	Taint.addTaintString(data, Taint.TAINT_IMEI);
+! 	return data;
+      }
+      
+      public void copyStringToBuffer(int columnIndex, CharArrayBuffer buffer) {
