@@ -145,7 +145,7 @@ Applying the patches on TaintDroid is done by issuing:
 
 {{{
 patch -p0 -i dalvik.patch
-paatch -p0 -i frameworks.patch
+patch -p0 -i frameworks.patch
 }}}
 in _~/tdroid/tdroid-2.1_r2.1p/_. It then needs to be compiled once again with:
 
