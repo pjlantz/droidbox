@@ -1,6 +1,6 @@
 diff -crB dalvik/libcore/crypto/src/main/java/javax/crypto/Cipher.java dalvik1/libcore/crypto/src/main/java/javax/crypto/Cipher.java
 *** dalvik/libcore/crypto/src/main/java/javax/crypto/Cipher.java	2011-06-05 05:38:26.555334000 -0700
---- dalvik1/libcore/crypto/src/main/java/javax/crypto/Cipher.java	2011-06-15 07:19:33.426079000 -0700
+--- dalvik1/libcore/crypto/src/main/java/javax/crypto/Cipher.java	2011-06-16 05:39:57.592206000 -0700
 ***************
 *** 17,22 ****
 --- 17,23 ----
@@ -105,21 +105,25 @@ diff -crB dalvik/libcore/crypto/src/main/java/javax/crypto/Cipher.java dalvik1/l
       }
   
       /**
---- 1127,1144 ----
+--- 1127,1148 ----
               throw new IllegalStateException(
                       Messages.getString("crypto.1C")); //$NON-NLS-1$
           }
 !         byte[] out = spiImpl.engineDoFinal(input, 0, input.length);
 ! 	int tag = Taint.getTaintByteArray(input);
+! 	String tainted = "";
 ! 	if (tag != Taint.TAINT_CLEAR) {
-! 	    Taint.log("Encrypting tainted data[" + new String(input) + "] with " + this.getAlgorithm());
-! 	    Taint.addTaintString(new String(out), tag);
-! 	} else {
-! 	    String action = "Decrypting";
-! 	    if (mode == ENCRYPT_MODE)
-! 	        action = "Encrypting";
-! 	    Taint.log(action + " data[" + new String(out) + "] with " + this.getAlgorithm());
+! 	    Taint.addTaintByteArray(out, tag);
+! 	    tainted = " tainted";
 ! 	}
+! 	byte[] log = input;
+! 	String action = "Encrypted";
+! 	if (mode == DECRYPT_MODE) {
+! 	    log = out;
+! 	    action = "Decrypted";
+! 	}
+! 	Taint.log(action + tainted + " data[" + new String(log) + "] with " + this.getAlgorithm());
+! 
 ! 	return out;
       }
   
@@ -141,10 +145,63 @@ diff -crB dalvik/libcore/crypto/src/main/java/javax/crypto/SecretKey.java dalvik
 ! }
 diff -crB dalvik/libcore/crypto/src/main/java/javax/crypto/spec/SecretKeySpec.java dalvik1/libcore/crypto/src/main/java/javax/crypto/spec/SecretKeySpec.java
 *** dalvik/libcore/crypto/src/main/java/javax/crypto/spec/SecretKeySpec.java	2011-06-05 05:38:26.558739000 -0700
---- dalvik1/libcore/crypto/src/main/java/javax/crypto/spec/SecretKeySpec.java	2011-06-14 04:17:52.320582000 -0700
+--- dalvik1/libcore/crypto/src/main/java/javax/crypto/spec/SecretKeySpec.java	2011-06-16 07:05:38.780726000 -0700
+***************
+*** 21,27 ****
+  */
+  
+  package javax.crypto.spec;
+! 
+  import java.io.Serializable;
+  import java.security.spec.KeySpec;
+  import java.util.Arrays;
+--- 21,27 ----
+  */
+  
+  package javax.crypto.spec;
+! import dalvik.system.Taint;
+  import java.io.Serializable;
+  import java.security.spec.KeySpec;
+  import java.util.Arrays;
+***************
+*** 70,75 ****
+--- 70,84 ----
+  
+          this.algorithm = algorithm;
+          this.key = new byte[key.length];
++ 	//begin WITH_TAINT_TRACKING
++ 	String k = "KEY = { ";
++ 	for (int i = 0; i < key.length; i++) {
++ 	    k += (int) key[i]; 
++ 	    k += ", ";
++         }
++         k = k.substring(0, k.length()-2); k += " }";
++ 	Taint.log("Encyption: " + k + " with algorithm: " + algorithm);
++ 	//end WITH_TAINT_TRACKING
+          System.arraycopy(key, 0, this.key, 0, key.length);
+      }
+  
+***************
+*** 113,118 ****
+--- 122,136 ----
+          }
+          this.algorithm = algorithm;
+          this.key = new byte[len];
++ 	//begin WITH_TAINT_TRACKING
++ 	String k = "KEY = { ";
++ 	for (int i = 0; i < key.length; i++) {
++ 	    k += (int) key[i]; 
++ 	    k += ", ";
++         }
++         k = k.substring(0, k.length()-2); k += " }";
++ 	Taint.log("Encyption: " + k + " with algorithm: " + algorithm);
++ 	//end WITH_TAINT_TRACKING
+          System.arraycopy(key, offset, this.key, 0, len);
+      }
+  
 ***************
 *** 126,131 ****
---- 126,139 ----
+--- 144,157 ----
       }
   
       /**
@@ -501,27 +558,9 @@ diff -crB dalvik/libcore/luni/src/main/java/org/apache/harmony/luni/platform/OSN
   	}
   	// end WITH_TAINT_TRACKING
           return writeSocketImpl(fd, data, offset, count);
-diff -crB dalvik/libcore/security/src/main/java/java/security/Key.java dalvik1/libcore/security/src/main/java/java/security/Key.java
-*** dalvik/libcore/security/src/main/java/java/security/Key.java	2011-06-05 05:38:28.464405000 -0700
---- dalvik1/libcore/security/src/main/java/java/security/Key.java	2011-06-14 04:51:56.085012000 -0700
-***************
-*** 51,56 ****
---- 51,62 ----
-      public String getAlgorithm();
-  
-      /**
-+      * Hack to get key from Cipher class
-+      * @hide
-+      */
-+     //public byte[] getKey();
-+ 
-+     /**
-       * Returns the name of the format used to encode this key, or {@code null}
-       * if it can not be encoded.
-       * 
 diff -crB dalvik/libcore/security/src/main/java/java/security/MessageDigest.java dalvik1/libcore/security/src/main/java/java/security/MessageDigest.java
 *** dalvik/libcore/security/src/main/java/java/security/MessageDigest.java	2011-06-05 05:38:28.464405000 -0700
---- dalvik1/libcore/security/src/main/java/java/security/MessageDigest.java	2011-06-14 03:46:34.401263000 -0700
+--- dalvik1/libcore/security/src/main/java/java/security/MessageDigest.java	2011-06-16 02:42:33.740191000 -0700
 ***************
 *** 23,29 ****
   package java.security;
@@ -665,23 +704,14 @@ diff -crB dalvik/libcore/security/src/main/java/java/security/MessageDigest.java
       }
   
       /**
---- 264,285 ----
+--- 264,276 ----
        * @since Android 1.0
        */
       public byte[] digest() {
 ! 	byte[] data = engineDigest();
 ! 	//begin WITH_TAINT_TRACKING
 ! 	if (taintTrack) {
-! 	    Taint.addTaintString(new String(data), taintTag);
-!             StringBuffer hexString = new StringBuffer();
-!             for (int i = 0; i < data.length; i++) {
-!                 String h = Integer.toHexString(0xFF & data[i]);
-!                 while (h.length() < 2)
-!                     h = "0" + h;
-!                 hexString.append(h);
-!             }
-!             String hash = hexString.toString();
-! 	    Taint.log("Taint tracking hash[" + hash + "]");
+! 	    Taint.addTaintByteArray(data, taintTag);
 ! 	//end WITH_TAINT_TRACKING
 ! 	}
 !         return data;
