@@ -58,6 +58,7 @@ public class DroidBoxTests extends Activity {
     	String strUri = "content://sms/sent";
     	Uri urisms = Uri.parse(strUri);
     	Cursor c = this.getContentResolver().query(urisms, null, null, null, null);
+
     	while (c.moveToNext()) {
     		// Addr at column 2
     		String addr = c.getString(2);
