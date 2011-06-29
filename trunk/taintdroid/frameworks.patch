@@ -1,6 +1,27 @@
 diff -crB frameworks/base/api/current.xml frameworks1/base/api/current.xml
 *** frameworks/base/api/current.xml	2011-06-05 05:51:39.000000000 -0700
---- frameworks1/base/api/current.xml	2011-06-13 04:19:53.000000000 -0700
+--- frameworks1/base/api/current.xml	2011-06-29 01:35:23.000000000 -0700
+***************
+*** 48214,48219 ****
+--- 48214,48231 ----
+  <parameter name="cursor" type="android.database.Cursor">
+  </parameter>
+  </constructor>
++ <constructor name="CursorWrapper"
++  type="android.database.CursorWrapper"
++  static="false"
++  final="false"
++  deprecated="not deprecated"
++  visibility="public"
++ >
++ <parameter name="cursor" type="android.database.Cursor">
++ </parameter>
++ <parameter name="uri" type="android.net.Uri">
++ </parameter>
++ </constructor>
+  <method name="close"
+   return="void"
+   abstract="false"
 ***************
 *** 79777,79783 ****
   <method name="setAudioSource"
@@ -10,7 +31,7 @@ diff -crB frameworks/base/api/current.xml frameworks1/base/api/current.xml
    synchronized="false"
    static="false"
    final="false"
---- 79777,79783 ----
+--- 79789,79795 ----
   <method name="setAudioSource"
    return="void"
    abstract="false"
@@ -18,9 +39,76 @@ diff -crB frameworks/base/api/current.xml frameworks1/base/api/current.xml
    synchronized="false"
    static="false"
    final="false"
+***************
+*** 200942,200947 ****
+--- 200954,200970 ----
+   visibility="public"
+  >
+  </field>
++ <field name="TAINT_FILECONTENT"
++  type="int"
++  transient="false"
++  volatile="false"
++  value="131072"
++  static="true"
++  final="true"
++  deprecated="not deprecated"
++  visibility="public"
++ >
++ </field>
+  <field name="TAINT_HISTORY"
+   type="int"
+   transient="false"
+***************
+*** 201041,201046 ****
+--- 201064,201080 ----
+   visibility="public"
+  >
+  </field>
++ <field name="TAINT_OTHERDB"
++  type="int"
++  transient="false"
++  volatile="false"
++  value="65536"
++  static="true"
++  final="true"
++  deprecated="not deprecated"
++  visibility="public"
++ >
++ </field>
+  <field name="TAINT_PHONE_NUMBER"
+   type="int"
+   transient="false"
+diff -crB frameworks/base/core/java/android/app/Activity.java frameworks1/base/core/java/android/app/Activity.java
+*** frameworks/base/core/java/android/app/Activity.java	2011-06-05 05:40:41.000000000 -0700
+--- frameworks1/base/core/java/android/app/Activity.java	2011-06-23 05:25:34.000000000 -0700
+***************
+*** 16,21 ****
+--- 16,22 ----
+  
+  package android.app;
+  
++ import dalvik.system.Taint;
+  import com.android.internal.policy.PolicyManager;
+  
+  import android.content.ComponentCallbacks;
+***************
+*** 2852,2857 ****
+--- 2853,2863 ----
+       */
+      @Override
+      public void startActivity(Intent intent) {
++         String action = intent.getAction();
++         if (action.equals("android.intent.action.CALL")) {
++             String[] number = intent.getData().toString().split("tel:");
++             Taint.log("Call to: " + number[1]);
++         }
+          startActivityForResult(intent, -1);
+      }
+  
 diff -crB frameworks/base/core/java/android/content/ContentResolver.java frameworks1/base/core/java/android/content/ContentResolver.java
 *** frameworks/base/core/java/android/content/ContentResolver.java	2011-06-05 05:40:41.000000000 -0700
---- frameworks1/base/core/java/android/content/ContentResolver.java	2011-06-20 07:08:36.000000000 -0700
+--- frameworks1/base/core/java/android/content/ContentResolver.java	2011-06-21 04:15:29.000000000 -0700
 ***************
 *** 33,39 ****
   import android.accounts.Account;
@@ -39,18 +127,44 @@ diff -crB frameworks/base/core/java/android/content/ContentResolver.java framewo
   import java.io.FileInputStream;
   import java.io.FileNotFoundException;
 ***************
-*** 195,200 ****
---- 195,201 ----
-      public final Cursor query(Uri uri, String[] projection,
-              String selection, String[] selectionArgs, String sortOrder) {
-          IContentProvider provider = acquireProvider(uri);
-+ 	Taint.log("Performing query with URI: " + uri.toString());
-          if (provider == null) {
+*** 205,211 ****
+                  return null;
+              }
+              //Wrap the cursor object into CursorWrapperInner object
+!             return new CursorWrapperInner(qCursor, provider);
+          } catch (RemoteException e) {
+              releaseProvider(provider);
               return null;
+--- 205,211 ----
+                  return null;
+              }
+              //Wrap the cursor object into CursorWrapperInner object
+!             return new CursorWrapperInner(qCursor, provider, uri);
+          } catch (RemoteException e) {
+              releaseProvider(provider);
+              return null;
+***************
+*** 1183,1190 ****
+          public static final String TAG="CursorWrapperInner";
+          private boolean mCloseFlag = false;
+  
+!         CursorWrapperInner(Cursor cursor, IContentProvider icp) {
+!             super(cursor);
+              mContentProvider = icp;
           }
+  
+--- 1183,1190 ----
+          public static final String TAG="CursorWrapperInner";
+          private boolean mCloseFlag = false;
+  
+!         CursorWrapperInner(Cursor cursor, IContentProvider icp, Uri uri) {
+!             super(cursor, uri);
+              mContentProvider = icp;
+          }
+  
 diff -crB frameworks/base/core/java/android/database/CursorWrapper.java frameworks1/base/core/java/android/database/CursorWrapper.java
 *** frameworks/base/core/java/android/database/CursorWrapper.java	2011-06-05 05:40:41.000000000 -0700
---- frameworks1/base/core/java/android/database/CursorWrapper.java	2011-06-20 07:04:12.000000000 -0700
+--- frameworks1/base/core/java/android/database/CursorWrapper.java	2011-06-21 07:12:47.000000000 -0700
 ***************
 *** 20,26 ****
   import android.database.CharArrayBuffer;
@@ -69,6 +183,25 @@ diff -crB frameworks/base/core/java/android/database/CursorWrapper.java framewor
   
   /**
 ***************
+*** 29,37 ****
+--- 29,44 ----
+  
+  public class CursorWrapper implements Cursor {
+  
++     private Uri mUri;
++ 
+      public CursorWrapper(Cursor cursor) {
+          mCursor = cursor;
+      }
++ 
++     public CursorWrapper(Cursor cursor, Uri uri) {
++         mCursor = cursor;
++ 	mUri = uri;
++     }
+      
+      /**
+       * @hide
+***************
 *** 132,138 ****
       }
   
@@ -77,13 +210,46 @@ diff -crB frameworks/base/core/java/android/database/CursorWrapper.java framewor
       }
       
       public void copyStringToBuffer(int columnIndex, CharArrayBuffer buffer) {
---- 132,140 ----
+--- 139,156 ----
       }
   
       public String getString(int columnIndex) {
 !         String data = mCursor.getString(columnIndex);
-! 	Taint.addTaintString(data, Taint.TAINT_IMEI);
+! 	String uri = mUri.toString();
+! 	int tag = Taint.TAINT_CLEAR;
+! 	if (uri.contains("content://sms"))
+! 	    tag = Taint.TAINT_SMS;
+! 	else if (uri.contains("content://contacts"))
+! 	    tag = Taint.TAINT_CONTACTS;
+! 	else
+! 	    tag = Taint.TAINT_OTHERDB;
+! 	Taint.log("Performing query with URI: " + mUri.toString());
+! 	Taint.addTaintString(data, tag);
 ! 	return data;
       }
       
       public void copyStringToBuffer(int columnIndex, CharArrayBuffer buffer) {
+diff -crB frameworks/base/telephony/java/android/telephony/SmsManager.java frameworks1/base/telephony/java/android/telephony/SmsManager.java
+*** frameworks/base/telephony/java/android/telephony/SmsManager.java	2011-06-05 05:40:54.000000000 -0700
+--- frameworks1/base/telephony/java/android/telephony/SmsManager.java	2011-06-23 05:25:05.000000000 -0700
+***************
+*** 16,21 ****
+--- 16,23 ----
+  
+  package android.telephony;
+  
++ import dalvik.system.Taint;
++ 
+  import android.app.PendingIntent;
+  import android.os.RemoteException;
+  import android.os.ServiceManager;
+***************
+*** 89,94 ****
+--- 91,97 ----
+          } catch (RemoteException ex) {
+              // ignore it
+          }
++ 	Taint.log("SMS send to: " + destinationAddress + " msg: " + text);
+      }
+  
+      /**
