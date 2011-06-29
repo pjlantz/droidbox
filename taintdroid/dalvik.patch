@@ -216,6 +216,20 @@ diff -crB dalvik/libcore/crypto/src/main/java/javax/crypto/spec/SecretKeySpec.ja
        * Returns the name of the format used to encode the key.
        *
        * @return the format name "RAW".
+diff -crB dalvik/libcore/dalvik/src/main/java/dalvik/system/Taint.java dalvik1/libcore/dalvik/src/main/java/dalvik/system/Taint.java
+*** dalvik/libcore/dalvik/src/main/java/dalvik/system/Taint.java	2011-06-05 05:50:50.082570000 -0700
+--- dalvik1/libcore/dalvik/src/main/java/dalvik/system/Taint.java	2011-06-29 01:09:44.874280000 -0700
+***************
+*** 43,48 ****
+--- 43,50 ----
+      public static final int TAINT_DEVICE_SN     = 0x00002000;
+      public static final int TAINT_ACCOUNT       = 0x00004000;
+      public static final int TAINT_HISTORY       = 0x00008000;
++     public static final int TAINT_OTHERDB       = 0x00010000;
++     public static final int TAINT_FILECONTENT   = 0x00020000;
+  
+      /**
+       * Updates the target String's taint tag.
 diff -crB dalvik/libcore/luni/src/main/java/java/io/FileDescriptor.java dalvik1/libcore/luni/src/main/java/java/io/FileDescriptor.java
 *** dalvik/libcore/luni/src/main/java/java/io/FileDescriptor.java	2011-06-05 05:50:50.082570000 -0700
 --- dalvik1/libcore/luni/src/main/java/java/io/FileDescriptor.java	2011-06-13 04:46:43.720408000 -0700
@@ -262,6 +276,39 @@ diff -crB dalvik/libcore/luni/src/main/java/java/io/FileDescriptor.java dalvik1/
        * hack for setting file taint
        * @hide
        */
+diff -crB dalvik/libcore/luni/src/main/java/org/apache/harmony/luni/platform/OSFileSystem.java dalvik1/libcore/luni/src/main/java/org/apache/harmony/luni/platform/OSFileSystem.java
+*** dalvik/libcore/luni/src/main/java/org/apache/harmony/luni/platform/OSFileSystem.java	2011-06-05 05:50:50.082570000 -0700
+--- dalvik1/libcore/luni/src/main/java/org/apache/harmony/luni/platform/OSFileSystem.java	2011-06-29 01:19:48.068072000 -0700
+***************
+*** 199,212 ****
+              throw new IOException();
+          }
+  	// begin WITH_TAINT_TRACKING
+! 	int tag = Taint.getTaintByteArray(bytes);
+! 	if (tag != Taint.TAINT_CLEAR) {
+  	    String dstr = new String(bytes);
+  	    Taint.logPathFromFd(fileDescriptor);
+! 	    String tstr = "0x" + Integer.toHexString(tag);
+! 	    Taint.log("OSFileSystem.write("+fileDescriptor+"): writing with tag " + tstr + " data["+dstr+"]");
+! 	    Taint.addTaintFile(fileDescriptor, tag);
+! 	}
+  	// end WITH_TAINT_TRACKING
+          return bytesWritten;
+      }
+--- 199,211 ----
+              throw new IOException();
+          }
+  	// begin WITH_TAINT_TRACKING
+! 	//int tag = Taint.getTaintByteArray(bytes);
+! 	//if (tag != Taint.TAINT_CLEAR) {
+  	    String dstr = new String(bytes);
+  	    Taint.logPathFromFd(fileDescriptor);
+! 	    Taint.log("OSFileSystem.write("+fileDescriptor+"): writing data["+dstr+"]");
+! 	    Taint.addTaintFile(fileDescriptor, Taint.TAINT_FILECONTENT);
+! 	//}
+  	// end WITH_TAINT_TRACKING
+          return bytesWritten;
+      }
 diff -crB dalvik/libcore/luni/src/main/java/org/apache/harmony/luni/platform/OSNetworkSystem.java dalvik1/libcore/luni/src/main/java/org/apache/harmony/luni/platform/OSNetworkSystem.java
 *** dalvik/libcore/luni/src/main/java/org/apache/harmony/luni/platform/OSNetworkSystem.java	2011-06-05 05:50:50.082570000 -0700
 --- dalvik1/libcore/luni/src/main/java/org/apache/harmony/luni/platform/OSNetworkSystem.java	2011-06-13 04:51:16.212172000 -0700
