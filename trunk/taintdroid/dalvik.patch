@@ -1,6 +1,6 @@
 diff -crB dalvik/libcore/crypto/src/main/java/javax/crypto/Cipher.java dalvik1/libcore/crypto/src/main/java/javax/crypto/Cipher.java
-*** dalvik/libcore/crypto/src/main/java/javax/crypto/Cipher.java	2011-06-05 05:38:26.555334000 -0700
---- dalvik1/libcore/crypto/src/main/java/javax/crypto/Cipher.java	2011-06-16 05:39:57.592206000 -0700
+*** dalvik/libcore/crypto/src/main/java/javax/crypto/Cipher.java	2011-06-05 05:38:26.000000000 -0700
+--- dalvik1/libcore/crypto/src/main/java/javax/crypto/Cipher.java	2011-06-16 05:39:57.000000000 -0700
 ***************
 *** 17,22 ****
 --- 17,23 ----
@@ -129,8 +129,8 @@ diff -crB dalvik/libcore/crypto/src/main/java/javax/crypto/Cipher.java dalvik1/l
   
       /**
 diff -crB dalvik/libcore/crypto/src/main/java/javax/crypto/SecretKey.java dalvik1/libcore/crypto/src/main/java/javax/crypto/SecretKey.java
-*** dalvik/libcore/crypto/src/main/java/javax/crypto/SecretKey.java	2011-06-05 05:38:26.558739000 -0700
---- dalvik1/libcore/crypto/src/main/java/javax/crypto/SecretKey.java	2011-06-14 04:23:29.682007000 -0700
+*** dalvik/libcore/crypto/src/main/java/javax/crypto/SecretKey.java	2011-06-05 05:38:26.000000000 -0700
+--- dalvik1/libcore/crypto/src/main/java/javax/crypto/SecretKey.java	2011-06-14 04:23:29.000000000 -0700
 ***************
 *** 38,41 ****
        * @serial
@@ -144,8 +144,8 @@ diff -crB dalvik/libcore/crypto/src/main/java/javax/crypto/SecretKey.java dalvik
       public static final long serialVersionUID = -4795878709595146952L;
 ! }
 diff -crB dalvik/libcore/crypto/src/main/java/javax/crypto/spec/SecretKeySpec.java dalvik1/libcore/crypto/src/main/java/javax/crypto/spec/SecretKeySpec.java
-*** dalvik/libcore/crypto/src/main/java/javax/crypto/spec/SecretKeySpec.java	2011-06-05 05:38:26.558739000 -0700
---- dalvik1/libcore/crypto/src/main/java/javax/crypto/spec/SecretKeySpec.java	2011-06-16 07:05:38.780726000 -0700
+*** dalvik/libcore/crypto/src/main/java/javax/crypto/spec/SecretKeySpec.java	2011-06-05 05:38:26.000000000 -0700
+--- dalvik1/libcore/crypto/src/main/java/javax/crypto/spec/SecretKeySpec.java	2011-06-16 07:05:38.000000000 -0700
 ***************
 *** 21,27 ****
   */
@@ -217,22 +217,23 @@ diff -crB dalvik/libcore/crypto/src/main/java/javax/crypto/spec/SecretKeySpec.ja
        *
        * @return the format name "RAW".
 diff -crB dalvik/libcore/dalvik/src/main/java/dalvik/system/Taint.java dalvik1/libcore/dalvik/src/main/java/dalvik/system/Taint.java
-*** dalvik/libcore/dalvik/src/main/java/dalvik/system/Taint.java	2011-06-05 05:50:50.082570000 -0700
---- dalvik1/libcore/dalvik/src/main/java/dalvik/system/Taint.java	2011-06-29 01:09:44.874280000 -0700
+*** dalvik/libcore/dalvik/src/main/java/dalvik/system/Taint.java	2011-06-05 05:50:50.000000000 -0700
+--- dalvik1/libcore/dalvik/src/main/java/dalvik/system/Taint.java	2011-07-01 08:05:23.000000000 -0700
 ***************
 *** 43,48 ****
---- 43,50 ----
+--- 43,51 ----
       public static final int TAINT_DEVICE_SN     = 0x00002000;
       public static final int TAINT_ACCOUNT       = 0x00004000;
       public static final int TAINT_HISTORY       = 0x00008000;
 +     public static final int TAINT_OTHERDB       = 0x00010000;
 +     public static final int TAINT_FILECONTENT   = 0x00020000;
++     public static final int TAINT_PACKAGE	= 0x00040000;
   
       /**
        * Updates the target String's taint tag.
 diff -crB dalvik/libcore/luni/src/main/java/java/io/FileDescriptor.java dalvik1/libcore/luni/src/main/java/java/io/FileDescriptor.java
-*** dalvik/libcore/luni/src/main/java/java/io/FileDescriptor.java	2011-06-05 05:50:50.082570000 -0700
---- dalvik1/libcore/luni/src/main/java/java/io/FileDescriptor.java	2011-06-13 04:46:43.720408000 -0700
+*** dalvik/libcore/luni/src/main/java/java/io/FileDescriptor.java	2011-06-05 05:50:50.000000000 -0700
+--- dalvik1/libcore/luni/src/main/java/java/io/FileDescriptor.java	2011-06-13 04:46:43.000000000 -0700
 ***************
 *** 79,84 ****
 --- 79,85 ----
@@ -277,8 +278,8 @@ diff -crB dalvik/libcore/luni/src/main/java/java/io/FileDescriptor.java dalvik1/
        * @hide
        */
 diff -crB dalvik/libcore/luni/src/main/java/org/apache/harmony/luni/platform/OSFileSystem.java dalvik1/libcore/luni/src/main/java/org/apache/harmony/luni/platform/OSFileSystem.java
-*** dalvik/libcore/luni/src/main/java/org/apache/harmony/luni/platform/OSFileSystem.java	2011-06-05 05:50:50.082570000 -0700
---- dalvik1/libcore/luni/src/main/java/org/apache/harmony/luni/platform/OSFileSystem.java	2011-06-29 01:19:48.068072000 -0700
+*** dalvik/libcore/luni/src/main/java/org/apache/harmony/luni/platform/OSFileSystem.java	2011-06-05 05:50:50.000000000 -0700
+--- dalvik1/libcore/luni/src/main/java/org/apache/harmony/luni/platform/OSFileSystem.java	2011-06-29 01:19:48.000000000 -0700
 ***************
 *** 199,212 ****
               throw new IOException();
@@ -310,8 +311,8 @@ diff -crB dalvik/libcore/luni/src/main/java/org/apache/harmony/luni/platform/OSF
           return bytesWritten;
       }
 diff -crB dalvik/libcore/luni/src/main/java/org/apache/harmony/luni/platform/OSNetworkSystem.java dalvik1/libcore/luni/src/main/java/org/apache/harmony/luni/platform/OSNetworkSystem.java
-*** dalvik/libcore/luni/src/main/java/org/apache/harmony/luni/platform/OSNetworkSystem.java	2011-06-05 05:50:50.082570000 -0700
---- dalvik1/libcore/luni/src/main/java/org/apache/harmony/luni/platform/OSNetworkSystem.java	2011-06-13 04:51:16.212172000 -0700
+*** dalvik/libcore/luni/src/main/java/org/apache/harmony/luni/platform/OSNetworkSystem.java	2011-06-05 05:50:50.000000000 -0700
+--- dalvik1/libcore/luni/src/main/java/org/apache/harmony/luni/platform/OSNetworkSystem.java	2011-06-13 04:51:16.000000000 -0700
 ***************
 *** 116,123 ****
       public int connect(FileDescriptor fd, int trafficClass,
@@ -606,8 +607,8 @@ diff -crB dalvik/libcore/luni/src/main/java/org/apache/harmony/luni/platform/OSN
   	// end WITH_TAINT_TRACKING
           return writeSocketImpl(fd, data, offset, count);
 diff -crB dalvik/libcore/security/src/main/java/java/security/MessageDigest.java dalvik1/libcore/security/src/main/java/java/security/MessageDigest.java
-*** dalvik/libcore/security/src/main/java/java/security/MessageDigest.java	2011-06-05 05:38:28.464405000 -0700
---- dalvik1/libcore/security/src/main/java/java/security/MessageDigest.java	2011-06-16 02:42:33.740191000 -0700
+*** dalvik/libcore/security/src/main/java/java/security/MessageDigest.java	2011-06-05 05:38:28.000000000 -0700
+--- dalvik1/libcore/security/src/main/java/java/security/MessageDigest.java	2011-06-16 02:42:33.000000000 -0700
 ***************
 *** 23,29 ****
   package java.security;
@@ -766,8 +767,8 @@ diff -crB dalvik/libcore/security/src/main/java/java/security/MessageDigest.java
   
       /**
 diff -crB dalvik/libcore/security/src/main/java/org/apache/harmony/security/PrivateKeyImpl.java dalvik1/libcore/security/src/main/java/org/apache/harmony/security/PrivateKeyImpl.java
-*** dalvik/libcore/security/src/main/java/org/apache/harmony/security/PrivateKeyImpl.java	2011-06-05 05:38:28.483671000 -0700
---- dalvik1/libcore/security/src/main/java/org/apache/harmony/security/PrivateKeyImpl.java	2011-06-14 04:41:04.533162000 -0700
+*** dalvik/libcore/security/src/main/java/org/apache/harmony/security/PrivateKeyImpl.java	2011-06-05 05:38:28.000000000 -0700
+--- dalvik1/libcore/security/src/main/java/org/apache/harmony/security/PrivateKeyImpl.java	2011-06-14 04:41:04.000000000 -0700
 ***************
 *** 54,59 ****
 --- 54,71 ----
@@ -790,8 +791,8 @@ diff -crB dalvik/libcore/security/src/main/java/org/apache/harmony/security/Priv
           this.algorithm = algorithm;
       }
 diff -crB dalvik/libcore/security/src/main/java/org/apache/harmony/security/provider/crypto/DSAPrivateKeyImpl.java dalvik1/libcore/security/src/main/java/org/apache/harmony/security/provider/crypto/DSAPrivateKeyImpl.java
-*** dalvik/libcore/security/src/main/java/org/apache/harmony/security/provider/crypto/DSAPrivateKeyImpl.java	2011-06-05 05:38:28.488774000 -0700
---- dalvik1/libcore/security/src/main/java/org/apache/harmony/security/provider/crypto/DSAPrivateKeyImpl.java	2011-06-14 04:40:18.100817000 -0700
+*** dalvik/libcore/security/src/main/java/org/apache/harmony/security/provider/crypto/DSAPrivateKeyImpl.java	2011-06-05 05:38:28.000000000 -0700
+--- dalvik1/libcore/security/src/main/java/org/apache/harmony/security/provider/crypto/DSAPrivateKeyImpl.java	2011-06-14 04:40:18.000000000 -0700
 ***************
 *** 154,157 ****
 --- 154,165 ----
@@ -808,8 +809,8 @@ diff -crB dalvik/libcore/security/src/main/java/org/apache/harmony/security/prov
 + 
   }
 diff -crB dalvik/libcore/security/src/main/java/org/apache/harmony/security/provider/crypto/DSAPublicKeyImpl.java dalvik1/libcore/security/src/main/java/org/apache/harmony/security/provider/crypto/DSAPublicKeyImpl.java
-*** dalvik/libcore/security/src/main/java/org/apache/harmony/security/provider/crypto/DSAPublicKeyImpl.java	2011-06-05 05:38:28.488774000 -0700
---- dalvik1/libcore/security/src/main/java/org/apache/harmony/security/provider/crypto/DSAPublicKeyImpl.java	2011-06-14 04:42:29.048570000 -0700
+*** dalvik/libcore/security/src/main/java/org/apache/harmony/security/provider/crypto/DSAPublicKeyImpl.java	2011-06-05 05:38:28.000000000 -0700
+--- dalvik1/libcore/security/src/main/java/org/apache/harmony/security/provider/crypto/DSAPublicKeyImpl.java	2011-06-14 04:42:29.000000000 -0700
 ***************
 *** 177,180 ****
 --- 177,188 ----
@@ -826,8 +827,8 @@ diff -crB dalvik/libcore/security/src/main/java/org/apache/harmony/security/prov
 + 
   }
 diff -crB dalvik/libcore/security/src/main/java/org/apache/harmony/security/PublicKeyImpl.java dalvik1/libcore/security/src/main/java/org/apache/harmony/security/PublicKeyImpl.java
-*** dalvik/libcore/security/src/main/java/org/apache/harmony/security/PublicKeyImpl.java	2011-06-05 05:38:28.483671000 -0700
---- dalvik1/libcore/security/src/main/java/org/apache/harmony/security/PublicKeyImpl.java	2011-06-14 04:41:36.813048000 -0700
+*** dalvik/libcore/security/src/main/java/org/apache/harmony/security/PublicKeyImpl.java	2011-06-05 05:38:28.000000000 -0700
+--- dalvik1/libcore/security/src/main/java/org/apache/harmony/security/PublicKeyImpl.java	2011-06-14 04:41:36.000000000 -0700
 ***************
 *** 58,63 ****
 --- 58,73 ----
@@ -848,8 +849,8 @@ diff -crB dalvik/libcore/security/src/main/java/org/apache/harmony/security/Publ
       public void setAlgorithm(String algorithm) {
           this.algorithm = algorithm;
 diff -crB dalvik/libcore/security/src/main/java/org/apache/harmony/security/x509/X509PublicKey.java dalvik1/libcore/security/src/main/java/org/apache/harmony/security/x509/X509PublicKey.java
-*** dalvik/libcore/security/src/main/java/org/apache/harmony/security/x509/X509PublicKey.java	2011-06-05 05:38:28.488774000 -0700
---- dalvik1/libcore/security/src/main/java/org/apache/harmony/security/x509/X509PublicKey.java	2011-06-14 04:43:13.165045000 -0700
+*** dalvik/libcore/security/src/main/java/org/apache/harmony/security/x509/X509PublicKey.java	2011-06-05 05:38:28.000000000 -0700
+--- dalvik1/libcore/security/src/main/java/org/apache/harmony/security/x509/X509PublicKey.java	2011-06-14 04:43:13.000000000 -0700
 ***************
 *** 45,50 ****
 --- 45,58 ----
@@ -868,8 +869,8 @@ diff -crB dalvik/libcore/security/src/main/java/org/apache/harmony/security/x509
       public String toString() {
           StringBuilder buf = new StringBuilder("algorithm = "); // $NON-NLS-1$
 diff -crB dalvik/libcore/security/src/main/java/org/bouncycastle/jce/provider/JCEDHPrivateKey.java dalvik1/libcore/security/src/main/java/org/bouncycastle/jce/provider/JCEDHPrivateKey.java
-*** dalvik/libcore/security/src/main/java/org/bouncycastle/jce/provider/JCEDHPrivateKey.java	2011-06-05 05:38:28.684713000 -0700
---- dalvik1/libcore/security/src/main/java/org/bouncycastle/jce/provider/JCEDHPrivateKey.java	2011-06-14 04:32:19.628673000 -0700
+*** dalvik/libcore/security/src/main/java/org/bouncycastle/jce/provider/JCEDHPrivateKey.java	2011-06-05 05:38:28.000000000 -0700
+--- dalvik1/libcore/security/src/main/java/org/bouncycastle/jce/provider/JCEDHPrivateKey.java	2011-06-14 04:32:19.000000000 -0700
 ***************
 *** 105,110 ****
 --- 105,120 ----
@@ -890,8 +891,8 @@ diff -crB dalvik/libcore/security/src/main/java/org/bouncycastle/jce/provider/JC
       {
           return dhSpec;
 diff -crB dalvik/libcore/security/src/main/java/org/bouncycastle/jce/provider/JCEDHPublicKey.java dalvik1/libcore/security/src/main/java/org/bouncycastle/jce/provider/JCEDHPublicKey.java
-*** dalvik/libcore/security/src/main/java/org/bouncycastle/jce/provider/JCEDHPublicKey.java	2011-06-05 05:38:28.684713000 -0700
---- dalvik1/libcore/security/src/main/java/org/bouncycastle/jce/provider/JCEDHPublicKey.java	2011-06-14 04:32:46.936946000 -0700
+*** dalvik/libcore/security/src/main/java/org/bouncycastle/jce/provider/JCEDHPublicKey.java	2011-06-05 05:38:28.000000000 -0700
+--- dalvik1/libcore/security/src/main/java/org/bouncycastle/jce/provider/JCEDHPublicKey.java	2011-06-14 04:32:46.000000000 -0700
 ***************
 *** 97,102 ****
 --- 97,112 ----
@@ -912,8 +913,8 @@ diff -crB dalvik/libcore/security/src/main/java/org/bouncycastle/jce/provider/JC
       {
           return dhSpec;
 diff -crB dalvik/libcore/security/src/main/java/org/bouncycastle/jce/provider/JCEPBEKey.java dalvik1/libcore/security/src/main/java/org/bouncycastle/jce/provider/JCEPBEKey.java
-*** dalvik/libcore/security/src/main/java/org/bouncycastle/jce/provider/JCEPBEKey.java	2011-06-05 05:38:28.684713000 -0700
---- dalvik1/libcore/security/src/main/java/org/bouncycastle/jce/provider/JCEPBEKey.java	2011-06-14 04:31:17.833720000 -0700
+*** dalvik/libcore/security/src/main/java/org/bouncycastle/jce/provider/JCEPBEKey.java	2011-06-05 05:38:28.000000000 -0700
+--- dalvik1/libcore/security/src/main/java/org/bouncycastle/jce/provider/JCEPBEKey.java	2011-06-14 04:31:17.000000000 -0700
 ***************
 *** 118,123 ****
 --- 118,132 ----
@@ -933,8 +934,8 @@ diff -crB dalvik/libcore/security/src/main/java/org/bouncycastle/jce/provider/JC
        * @see javax.crypto.interfaces.PBEKey#getSalt()
        */
 diff -crB dalvik/libcore/security/src/main/java/org/bouncycastle/jce/provider/JCERSAPrivateCrtKey.java dalvik1/libcore/security/src/main/java/org/bouncycastle/jce/provider/JCERSAPrivateCrtKey.java
-*** dalvik/libcore/security/src/main/java/org/bouncycastle/jce/provider/JCERSAPrivateCrtKey.java	2011-06-05 05:38:28.684713000 -0700
---- dalvik1/libcore/security/src/main/java/org/bouncycastle/jce/provider/JCERSAPrivateCrtKey.java	2011-06-14 04:33:59.969916000 -0700
+*** dalvik/libcore/security/src/main/java/org/bouncycastle/jce/provider/JCERSAPrivateCrtKey.java	2011-06-05 05:38:28.000000000 -0700
+--- dalvik1/libcore/security/src/main/java/org/bouncycastle/jce/provider/JCERSAPrivateCrtKey.java	2011-06-14 04:33:59.000000000 -0700
 ***************
 *** 134,139 ****
 --- 134,150 ----
@@ -956,8 +957,8 @@ diff -crB dalvik/libcore/security/src/main/java/org/bouncycastle/jce/provider/JC
        *
        * @return the public exponent.
 diff -crB dalvik/libcore/security/src/main/java/org/bouncycastle/jce/provider/JCERSAPrivateKey.java dalvik1/libcore/security/src/main/java/org/bouncycastle/jce/provider/JCERSAPrivateKey.java
-*** dalvik/libcore/security/src/main/java/org/bouncycastle/jce/provider/JCERSAPrivateKey.java	2011-06-05 05:38:28.684713000 -0700
---- dalvik1/libcore/security/src/main/java/org/bouncycastle/jce/provider/JCERSAPrivateKey.java	2011-06-14 04:45:01.665322000 -0700
+*** dalvik/libcore/security/src/main/java/org/bouncycastle/jce/provider/JCERSAPrivateKey.java	2011-06-05 05:38:28.000000000 -0700
+--- dalvik1/libcore/security/src/main/java/org/bouncycastle/jce/provider/JCERSAPrivateKey.java	2011-06-14 04:45:01.000000000 -0700
 ***************
 *** 77,82 ****
 --- 77,91 ----
@@ -977,8 +978,8 @@ diff -crB dalvik/libcore/security/src/main/java/org/bouncycastle/jce/provider/JC
       {
           if (!(o instanceof RSAPrivateKey))
 diff -crB dalvik/libcore/security/src/main/java/org/bouncycastle/jce/provider/JCERSAPublicKey.java dalvik1/libcore/security/src/main/java/org/bouncycastle/jce/provider/JCERSAPublicKey.java
-*** dalvik/libcore/security/src/main/java/org/bouncycastle/jce/provider/JCERSAPublicKey.java	2011-06-05 05:38:28.684713000 -0700
---- dalvik1/libcore/security/src/main/java/org/bouncycastle/jce/provider/JCERSAPublicKey.java	2011-06-14 04:34:32.333624000 -0700
+*** dalvik/libcore/security/src/main/java/org/bouncycastle/jce/provider/JCERSAPublicKey.java	2011-06-05 05:38:28.000000000 -0700
+--- dalvik1/libcore/security/src/main/java/org/bouncycastle/jce/provider/JCERSAPublicKey.java	2011-06-14 04:34:32.000000000 -0700
 ***************
 *** 97,102 ****
 --- 97,114 ----
@@ -1001,8 +1002,8 @@ diff -crB dalvik/libcore/security/src/main/java/org/bouncycastle/jce/provider/JC
       {
           if (!(o instanceof RSAPublicKey))
 diff -crB dalvik/libcore/security/src/main/java/org/bouncycastle/jce/provider/JDKDSAPrivateKey.java dalvik1/libcore/security/src/main/java/org/bouncycastle/jce/provider/JDKDSAPrivateKey.java
-*** dalvik/libcore/security/src/main/java/org/bouncycastle/jce/provider/JDKDSAPrivateKey.java	2011-06-05 05:38:28.688065000 -0700
---- dalvik1/libcore/security/src/main/java/org/bouncycastle/jce/provider/JDKDSAPrivateKey.java	2011-06-14 04:46:54.515337000 -0700
+*** dalvik/libcore/security/src/main/java/org/bouncycastle/jce/provider/JDKDSAPrivateKey.java	2011-06-05 05:38:28.000000000 -0700
+--- dalvik1/libcore/security/src/main/java/org/bouncycastle/jce/provider/JDKDSAPrivateKey.java	2011-06-14 04:46:54.000000000 -0700
 ***************
 *** 92,97 ****
 --- 92,107 ----
@@ -1023,8 +1024,8 @@ diff -crB dalvik/libcore/security/src/main/java/org/bouncycastle/jce/provider/JD
       {
           return dsaSpec;
 diff -crB dalvik/libcore/security/src/main/java/org/bouncycastle/jce/provider/JDKDSAPublicKey.java dalvik1/libcore/security/src/main/java/org/bouncycastle/jce/provider/JDKDSAPublicKey.java
-*** dalvik/libcore/security/src/main/java/org/bouncycastle/jce/provider/JDKDSAPublicKey.java	2011-06-05 05:38:28.688065000 -0700
---- dalvik1/libcore/security/src/main/java/org/bouncycastle/jce/provider/JDKDSAPublicKey.java	2011-06-14 04:45:39.278054000 -0700
+*** dalvik/libcore/security/src/main/java/org/bouncycastle/jce/provider/JDKDSAPublicKey.java	2011-06-05 05:38:28.000000000 -0700
+--- dalvik1/libcore/security/src/main/java/org/bouncycastle/jce/provider/JDKDSAPublicKey.java	2011-06-14 04:45:39.000000000 -0700
 ***************
 *** 86,91 ****
 --- 86,101 ----
@@ -1045,8 +1046,8 @@ diff -crB dalvik/libcore/security/src/main/java/org/bouncycastle/jce/provider/JD
       {
           return dsaSpec;
 diff -crB dalvik/libcore/security/src/main/java/org/bouncycastle/jce/spec/IEKeySpec.java dalvik1/libcore/security/src/main/java/org/bouncycastle/jce/spec/IEKeySpec.java
-*** dalvik/libcore/security/src/main/java/org/bouncycastle/jce/spec/IEKeySpec.java	2011-06-05 05:38:28.690981000 -0700
---- dalvik1/libcore/security/src/main/java/org/bouncycastle/jce/spec/IEKeySpec.java	2011-06-14 04:36:44.222515000 -0700
+*** dalvik/libcore/security/src/main/java/org/bouncycastle/jce/spec/IEKeySpec.java	2011-06-05 05:38:28.000000000 -0700
+--- dalvik1/libcore/security/src/main/java/org/bouncycastle/jce/spec/IEKeySpec.java	2011-06-14 04:36:44.000000000 -0700
 ***************
 *** 67,70 ****
 --- 67,78 ----

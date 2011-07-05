@@ -1,6 +1,6 @@
 diff -crB frameworks/base/api/current.xml frameworks1/base/api/current.xml
 *** frameworks/base/api/current.xml	2011-06-05 05:51:39.000000000 -0700
---- frameworks1/base/api/current.xml	2011-06-29 01:35:23.000000000 -0700
+--- frameworks1/base/api/current.xml	2011-07-05 02:07:03.000000000 -0700
 ***************
 *** 48214,48219 ****
 --- 48214,48231 ----
@@ -61,7 +61,7 @@ diff -crB frameworks/base/api/current.xml frameworks1/base/api/current.xml
    transient="false"
 ***************
 *** 201041,201046 ****
---- 201064,201080 ----
+--- 201064,201091 ----
    visibility="public"
   >
   </field>
@@ -76,12 +76,23 @@ diff -crB frameworks/base/api/current.xml frameworks1/base/api/current.xml
 +  visibility="public"
 + >
 + </field>
++ <field name="TAINT_PACKAGE"
++  type="int"
++  transient="false"
++  volatile="false"
++  value="262144"
++  static="true"
++  final="true"
++  deprecated="not deprecated"
++  visibility="public"
++ >
++ </field>
   <field name="TAINT_PHONE_NUMBER"
    type="int"
    transient="false"
 diff -crB frameworks/base/core/java/android/app/Activity.java frameworks1/base/core/java/android/app/Activity.java
 *** frameworks/base/core/java/android/app/Activity.java	2011-06-05 05:40:41.000000000 -0700
---- frameworks1/base/core/java/android/app/Activity.java	2011-06-23 05:25:34.000000000 -0700
+--- frameworks1/base/core/java/android/app/Activity.java	2011-07-05 03:31:39.000000000 -0700
 ***************
 *** 16,21 ****
 --- 16,22 ----
@@ -99,13 +110,47 @@ diff -crB frameworks/base/core/java/android/app/Activity.java frameworks1/base/c
       @Override
       public void startActivity(Intent intent) {
 +         String action = intent.getAction();
-+         if (action.equals("android.intent.action.CALL")) {
++         if (action != null && action.equals("android.intent.action.CALL")) {
 +             String[] number = intent.getData().toString().split("tel:");
-+             Taint.log("Call to: " + number[1]);
++             Taint.log("{ \"PhoneCall\": { \"number\": \"" + number[1] + "\" } }");
 +         }
           startActivityForResult(intent, -1);
       }
   
+diff -crB frameworks/base/core/java/android/app/ApplicationContext.java frameworks1/base/core/java/android/app/ApplicationContext.java
+*** frameworks/base/core/java/android/app/ApplicationContext.java	2011-06-05 05:40:41.000000000 -0700
+--- frameworks1/base/core/java/android/app/ApplicationContext.java	2011-07-01 08:06:27.000000000 -0700
+***************
+*** 16,21 ****
+--- 16,23 ----
+  
+  package android.app;
+  
++ import dalvik.system.Taint;
++ 
+  import com.android.internal.policy.PolicyManager;
+  import com.android.internal.util.XmlUtils;
+  import com.google.android.collect.Maps;
+***************
+*** 1765,1771 ****
+          @Override
+          public List<ApplicationInfo> getInstalledApplications(int flags) {
+              try {
+!                 return mPM.getInstalledApplications(flags);
+              } catch (RemoteException e) {
+                  throw new RuntimeException("Package manager has died", e);
+              }
+--- 1767,1776 ----
+          @Override
+          public List<ApplicationInfo> getInstalledApplications(int flags) {
+              try {
+!                 List<ApplicationInfo> packages = mPM.getInstalledApplications(flags);
+! 		for (ApplicationInfo packageInfo : packages)
+! 			Taint.addTaintString(packageInfo.packageName, Taint.TAINT_PACKAGE);
+! 		return packages;
+              } catch (RemoteException e) {
+                  throw new RuntimeException("Package manager has died", e);
+              }
 diff -crB frameworks/base/core/java/android/content/ContentResolver.java frameworks1/base/core/java/android/content/ContentResolver.java
 *** frameworks/base/core/java/android/content/ContentResolver.java	2011-06-05 05:40:41.000000000 -0700
 --- frameworks1/base/core/java/android/content/ContentResolver.java	2011-06-21 04:15:29.000000000 -0700
@@ -229,9 +274,10 @@ diff -crB frameworks/base/core/java/android/database/CursorWrapper.java framewor
       }
       
       public void copyStringToBuffer(int columnIndex, CharArrayBuffer buffer) {
+
 diff -crB frameworks/base/telephony/java/android/telephony/SmsManager.java frameworks1/base/telephony/java/android/telephony/SmsManager.java
 *** frameworks/base/telephony/java/android/telephony/SmsManager.java	2011-06-05 05:40:54.000000000 -0700
---- frameworks1/base/telephony/java/android/telephony/SmsManager.java	2011-06-23 05:25:05.000000000 -0700
+--- frameworks1/base/telephony/java/android/telephony/SmsManager.java	2011-07-05 03:35:07.000000000 -0700
 ***************
 *** 16,21 ****
 --- 16,23 ----
@@ -249,7 +295,7 @@ diff -crB frameworks/base/telephony/java/android/telephony/SmsManager.java frame
           } catch (RemoteException ex) {
               // ignore it
           }
-+ 	Taint.log("SMS send to: " + destinationAddress + " msg: " + text);
++ 	Taint.log("{ \"SendSMS\": { \"number\": \"" + destinationAddress + "\", \"message\": \"" + text + "\" } }"); 
       }
   
       /**
