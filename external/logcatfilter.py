@@ -93,9 +93,9 @@ while 1:
                     sendsms[time.time()] = jsonStr
                 elif data.has_key('PhoneCall') and jsonStr not in phonecalls.values():
                     phonecalls[time.time()] = jsonStr
-                elif data.has_key('DataLeak') and jsonStr not in dataleaks:
+                elif data.has_key('DataLeak') and jsonStr not in dataleaks.values():
                     dataleaks[time.time()] = jsonStr
-                elif data.has_key('CryptoUsage') and jsonStr not in cryptousage:
+                elif data.has_key('CryptoUsage') and jsonStr not in cryptousage.values():
                     cryptousage[time.time()] = jsonStr
                 else:
                     continue
