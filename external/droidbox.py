@@ -28,6 +28,12 @@ from threading import Thread
 from xml.dom import minidom
 from subprocess import call
 from utils import AXMLPrinter
+import hashlib
+from pylab import *
+import matplotlib
+import matplotlib.pyplot as plt
+from matplotlib.patches import Rectangle
+from matplotlib.font_manager import FontProperties
 
 sendsms = {}
 phonecalls = {}
@@ -147,6 +153,25 @@ class ActivityThread(Thread):
             call(['./monkeyrunner', 'monkeyrunner.py', apkName, runPackage, runService])
             time.sleep(5)
             
+def fileHash(f, block_size=2**8):
+    """
+    Calculate MD5,SHA-1, SHA-256
+    hashes of APK input file
+    """
+    
+    md5 = hashlib.md5()
+    sha1 = hashlib.sha1()
+    sha256 = hashlib.sha256()
+    f = open(f, 'rb')
+    while True:
+        data = f.read(block_size)
+        if not data:
+            break
+        md5.update(data)
+        sha1.update(data)
+        sha256.update(data)
+    return [md5.hexdigest(), sha1.hexdigest(), sha256.hexdigest()]
+
 def getTags(tagParam):
     """
     Retrieve the tag names found within a tag
@@ -190,21 +215,7 @@ for i in zip.namelist() :
           activities.append( str( item.getAttribute("android:name") ) )
           for child in item.getElementsByTagName('action'):
               activityaction[str( item.getAttribute("android:name") )] = (str( child.getAttribute("android:name") ))
-"""              
-print "\nPackage name\n============"
-print packageNames
-print "\nPermissions\n==========="
-print permissions
-print "\nActivities\n=========="
-print activities
-print activityaction
-print "\nServices\n========"
-print services
-print "\nReceivers\n========="
-print recvs
-print recvsaction
-print ''
-"""
+              
 curses.setupterm()
 sys.stdout.write(curses.tigetstr("clear"))
 sys.stdout.flush()
@@ -222,6 +233,7 @@ count.start()
 actexec = ActivityThread()
 actexec.start()
 call(['../platform-tools/adb', 'logcat', '-c'])
+timeStamp = time.time()
 
 while 1:
     try:
@@ -241,9 +253,13 @@ while 1:
                         fd = parseKey[2].split('fd\":')[1].split(',')[0]
                         path = parseKey[2].split('path\":')[1].split('} }')[0]
                         temp['operation'] = operation.replace('\"', '').strip()
+                        if temp['operation'] == 'write':
+                            temp['type'] = 'file write'
+                        else:
+                            temp['type'] = 'file read'
                         temp['fd'] = fd.replace('\"', '').strip()
                         temp['path'] = path.replace('\"', '').strip()
-                        fdaccess[time.time()] = temp
+                        fdaccess[time.time()-timeStamp] = temp
                         count.increaseCount()
                     # opened network connection log
                     if key == 'OpenNet':
@@ -251,8 +267,9 @@ while 1:
                         desthost = parseKey[2].split('desthost\":')[1].split(',')[0]
                         temp['desthost'] = desthost.replace('\"', '').strip()
                         destport = parseKey[2].split('destport\":')[1].split('} }')[0]
-                        temp['destport'] = destport.replace('\"', '').strip()                                                 
-                        opennet[time.time()] = temp
+                        temp['destport'] = destport.replace('\"', '').strip()
+                        temp['type'] = 'net open'                                                
+                        opennet[time.time()-timeStamp] = temp
                         count.increaseCount()
                     # outgoing network activity log
                     if key == 'SendNet':
@@ -262,8 +279,9 @@ while 1:
                         destport = parseKey[2].split('destport\":')[1].split(',')[0]
                         temp['destport'] = destport.replace('\"', '').strip() 
                         data = parseKey[2].split('data\":')[1].split('} }')[0]
-                        temp['data'] = data.replace('\"', '').strip()                                                                        
-                        sendnet[time.time()] = temp
+                        temp['data'] = data.replace('\"', '').strip()        
+                        temp['type'] = 'net write'                                                                
+                        sendnet[time.time()-timeStamp] = temp
                         count.increaseCount()                                          
                     # data leak log
                     if key == 'DataLeak':
@@ -286,8 +304,9 @@ while 1:
                             data = parseKey[2].split('data\":')[1].split('} }')[0]                            
                             temp['data'] = data.split('HTTP/1.1')[0].split('\"')[1].strip()         
                         tag = parseKey[2].split('tag\":')[1].split(',')[0]
+                        temp['type'] = 'leak'
                         temp['tag'] = tag.replace('\"', '').strip()
-                        dataleaks[time.time()] = temp
+                        dataleaks[time.time()-timeStamp] = temp
                         count.increaseCount()
                     # sent sms log
                     if key == 'SendSMS':
@@ -296,14 +315,16 @@ while 1:
                         temp['number'] = number.replace('\"', '').strip()                        
                         message = parseKey[2].split('message\":')[1].split('} }')[0]                           
                         temp['message'] = message.replace('\"', '').strip()
-                        sendsms[time.time()] = temp
+                        temp['type'] = 'sms'
+                        sendsms[time.time()-timeStamp] = temp
                         count.increaseCount()
                     # phone call log
                     if key == 'PhoneCall':
                         temp = {}
                         number = parseKey[2].split('number\":')[1].split('} }')[0]                           
                         temp['number'] = number.replace('\"', '').strip()
-                        phonecalls[time.time()] = temp
+                        temp['type'] = 'call'
+                        phonecalls[time.time()-timeStamp] = temp
                         count.increaseCount()
                     # crypto api usage log
                     if key == 'CryptoUsage':
@@ -319,8 +340,9 @@ while 1:
                             algorithm = parseKey[2].split('algorithm\":')[1].split(',')[0]
                             temp['algorithm'] = algorithm.replace('\"', '').strip()
                             data = parseKey[2].split('data\":')[1].split('} }')[0]                           
-                            temp['data'] = data.replace('\"', '').strip()                                                                        
-                        cryptousage[time.time()] = temp
+                            temp['data'] = data.replace('\"', '').strip()
+                        temp['type'] = 'crypto'                                                                   
+                        cryptousage[time.time()-timeStamp] = temp
                         count.increaseCount()
             except ValueError:
                 pass
@@ -335,6 +357,14 @@ print ''
 space = ' ' * 5
 space2 = ' ' * 8
 space3 = ' ' * 11
+
+hash = fileHash(apkName)
+print "\n\n" + space + "\033[1;48m[Info]\033[1;m\n" + space + "------"
+print "%s\033[1;36m%s\033[1;m\t%s" % (space2, "File name:", apkName)
+print "%s\033[1;36m%s\033[1;m\t\t%s" % (space2, "MD5:", hash[0])
+print "%s\033[1;36m%s\033[1;m\t\t%s" % (space2, "SHA1:", hash[1])
+print "%s\033[1;36m%s\033[1;m\t\t%s" % (space2, "SHA256:", hash[2])
+print "%s\033[1;36m%s\033[1;m\t%s" % (space2, "Duration:", str(time.time() - timeStamp) + "s") 
 
 # Print file activity
 keys = fdaccess.keys()
@@ -382,7 +412,7 @@ for key in keys:
 if len(keys) == 0:
     print ''
 
-# TODO: Print network communication
+# TODO: Print incoming network communication
 print space + "\033[1;48m[Network activity]\033[1;m\n" + space + "------------------\n"
 print space2 + "\033[1;48m[Opened connections]\033[1;m\n" + space2 + "--------------------"
 keys = opennet.keys()
@@ -410,7 +440,6 @@ for key in keys:
 if len(keys) == 0:
     print ''
 
-# TODO: Print monitored intents
 print space + "\033[1;48m[Intent receivers]\033[1;m\n" + space + "------------------"
 for recv in recvsaction:
     print "%s\033[1;36m%s\033[1;m\t\t\t Action: %s" % (space3, recv, recvsaction[recv])
@@ -474,4 +503,195 @@ for key in keys:
         pass
     except KeyError:
         pass
-    
+        
+
+
+# Generate APK behavior graph
+labels = {'begin':0, 'call':1, 'sms':2, 
+          'leak':3, 'file read':4, 'file write':5, 
+          'net open': 6, 'net read':7, 'net write':8, 
+          'crypto':9, 'end':10 }
+
+result = list()
+predict = list()
+mergedLogs = dict(phonecalls.items() + sendsms.items() + dataleaks.items() + cryptousage.items() +
+                  opennet.items() + sendnet.items() + fdaccess.items())
+keys = mergedLogs.keys()
+keys.sort()
+for key in keys:
+    result.append(key)
+    temp = mergedLogs[key]
+    predict.append(labels[temp['type']])
+
+ax = gca()
+ax.plot(result, predict, c='r', marker='o', linewidth=2)
+ax.set_yticks((0,1,2,3,4,5,6,7,8, 9, 10))
+
+# Add y-axis labes
+ylabels = []
+for key, value in sorted(labels.iteritems(), key=lambda (k,v): (v,k)):
+    if key == 'begin' or key == 'end':
+        key = ''
+    ylabels.append(key)
+ax.set_yticklabels(ylabels)
+
+# Create zebra stripes on y-axis
+yTickPos,_ = plt.yticks()
+yTickPos = yTickPos[:-1]
+ax.barh(yTickPos, [max(plt.xticks()[0])] * len(yTickPos), height=(yTickPos[1]-yTickPos[0]), color=['#FFFFCC','w'], linewidth=0.0)
+grid(True)
+
+xlabel('timestamp', {'fontsize': 18})
+ylabel('activity', {'fontsize': 18})
+ax.set_xlim(result[0], result[len(result)-1])
+
+# Save figure
+title(apkName)
+F = gcf()
+DefaultSize = F.get_size_inches()
+F.set_size_inches( (DefaultSize[0]*1.2, DefaultSize[1]*1.2) )
+Size = F.get_size_inches()
+savefig("behaviorgraph.png")
+print "\n\nSaved APK behavior graph as: \033[1;32mbehaviorgraph.png\033[1;m"
+plt.clf()
+
+
+
+# Generate treemap 
+NODE_CHILDREN = ['CALL', 'SMSSEND', 'SMSLEAK', 'FILEWRITE', 'FILEREAD', 'FILELEAK',
+                 'NETOPEN', 'NETWRITE', 'NETREAD', 'NETLEAK', 'CRYPTKEY', 'CRYPTDEC', 'CRYPTENC']
+MAP_COLORS = {'CALL': "#66cdaa", 'SMSSEND': "#8fbc8f", 'SMSLEAK': '#2e8b57', 'FILEWRITE': '#ffd700',
+              'FILEREAD': '#eedd82', 'FILELEAK': '#daa520', 'NETOPEN': '#c80000', 'NETWRITE': '#cd5c5c', 
+              'NETREAD': '#bc8f8f', 'NETLEAK': '#8b4513', 'CRYPTKEY': '#6495ed', 'CRYPTDEC': '#483d8b', 
+              'CRYPTENC': '#6a5acd'}
+
+class Treemap:
+
+    def __init__(self, tree, iter_method, size_method, color_method):
+        """
+        Create a tree map from tree, using itermethod(node) to walk tree,
+        size_method(node) to get object size and color_method(node) to get its 
+        color
+        """
+
+        self.ax = gca()
+        subplots_adjust(left=0, right=1, top=1, bottom=0)
+        self.ax.set_xticks([])
+        self.ax.set_yticks([])
+        self.treemapIter = 0
+
+        self.size_method = size_method
+        self.iter_method = iter_method
+        self.color_method = color_method
+        self.addnode(tree)
+        
+        # Legend box
+        """box = self.ax.get_position()
+        self.ax.set_position([box.x0, box.y0, box.width * 0.8, box.height])
+        self.ax.legend(loc='upper center', bbox_to_anchor=(0.5, -0.05),
+                       fancybox=True, shadow=True, ncol=5)"""
+
+    def addnode(self, node, lower=[0,0], upper=[1,1], axis=0):
+        axis = axis % 2
+        self.draw_rectangle(lower, upper, node)
+        width = upper[axis] - lower[axis]
+        if not isinstance(node, tuple):
+            self.treemapIter = self.treemapIter + 1
+        try:
+            for child in self.iter_method(node):
+                upper[axis] = lower[axis] + (width * float(size(child))) / size(node)
+                self.addnode(child, list(lower), list(upper), axis + 1)
+                lower[axis] = upper[axis]
+        except TypeError:
+            pass
+
+    def draw_rectangle(self, lower, upper, node):
+        if not isinstance(node, tuple):
+            r = Rectangle(lower, upper[0]-lower[0], upper[1] - lower[1],
+                          edgecolor='k', linewidth=0.3,
+                          facecolor= self.color_method(node, self.treemapIter), 
+                          label=NODE_CHILDREN[self.treemapIter])
+            self.ax.add_patch(r)
+                     
+size_cache = {}
+def size(thing):
+    if isinstance(thing, int):
+        return thing
+    if thing in size_cache:
+        return size_cache[thing]
+    else:
+        size_cache[thing] = reduce(int.__add__, [size(x) for x in thing])
+        return size_cache[thing]
+def set_color(thing, iternbr):
+    return MAP_COLORS[NODE_CHILDREN[iternbr]]
+
+tree = list()
+# get phone call actions
+calls = len(phonecalls)
+tree.append(calls)
+# get sms actions
+sms = list()
+smssend = len(sendsms)
+sms.append(smssend)
+count = 0
+for k, v in dataleaks.items():
+    if v['sink'] == 'SMS':
+        count = count + 1
+sms.append(count)
+tree.append(tuple(sms))
+# get file operations
+file = list()
+countw = 0
+countr = 0
+for k,v in fdaccess.items():
+    if v['operation'] == 'read':
+        countr = countr + 1
+    else:
+        countw = countw = 1
+file.append(countw)
+file.append(countr)
+count = 0
+for k,v in dataleaks.items():
+    if v['sink'] == 'File':
+        count = count + 1
+file.append(count)
+tree.append(tuple(file))
+# get network operations
+network = list()
+network.append(len(opennet))
+network.append(len(sendnet))
+network.append(0) # net read
+count = 0
+for k,v in dataleaks.items():
+    if v['sink'] == 'Network':
+        count = count + 1
+network.append(count)
+tree.append(tuple(network))
+# get crypto operations
+crypto = list()
+countk = 0
+countd = 0
+counte = 0
+for k,v in cryptousage.items():
+    if v['operation'] == 'keyalgo':
+        countk = countk + 1
+    if v['operation'] == 'encryption':
+        counte = counte + 1
+    if v['operation'] == 'decryption':
+        countd = countd + 1
+crypto.append(countk)
+crypto.append(countd)
+crypto.append(counte)
+tree.append(tuple(crypto))
+tree = tuple(tree)
+
+Treemap(tree, iter, size, set_color)
+xlabel('section', {'fontsize': 18})
+ylabel('operation', {'fontsize': 18})
+title(apkName)
+F = gcf()
+DefaultSize = F.get_size_inches()
+F.set_size_inches( (DefaultSize[0]*0.9, DefaultSize[1]*0.9))
+Size = F.get_size_inches()
+savefig('tree.png', bbox_inches = 'tight', pad_inches = 0.2)
+print "Saved treemap graph as: \033[1;32mtree.png\033[1;m"
