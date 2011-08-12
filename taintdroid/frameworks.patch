@@ -1,6 +1,6 @@
 diff -crB frameworks/base/api/current.xml frameworks1/base/api/current.xml
 *** frameworks/base/api/current.xml	2011-06-05 05:51:39.000000000 -0700
---- frameworks1/base/api/current.xml	2011-07-05 02:07:03.000000000 -0700
+--- frameworks1/base/api/current.xml	2011-07-26 06:31:20.000000000 -0700
 ***************
 *** 48214,48219 ****
 --- 48214,48231 ----
@@ -40,8 +40,19 @@ diff -crB frameworks/base/api/current.xml frameworks1/base/api/current.xml
    static="false"
    final="false"
 ***************
+*** 200862,200867 ****
+--- 200874,200881 ----
+  >
+  <parameter name="fd" type="int">
+  </parameter>
++ <parameter name="operation" type="int">
++ </parameter>
+  </method>
+  <method name="logPeerFromFd"
+   return="void"
+***************
 *** 200942,200947 ****
---- 200954,200970 ----
+--- 200956,200972 ----
    visibility="public"
   >
   </field>
@@ -61,7 +72,7 @@ diff -crB frameworks/base/api/current.xml frameworks1/base/api/current.xml
    transient="false"
 ***************
 *** 201041,201046 ****
---- 201064,201091 ----
+--- 201066,201093 ----
    visibility="public"
   >
   </field>
@@ -92,7 +103,7 @@ diff -crB frameworks/base/api/current.xml frameworks1/base/api/current.xml
    transient="false"
 diff -crB frameworks/base/core/java/android/app/Activity.java frameworks1/base/core/java/android/app/Activity.java
 *** frameworks/base/core/java/android/app/Activity.java	2011-06-05 05:40:41.000000000 -0700
---- frameworks1/base/core/java/android/app/Activity.java	2011-07-05 03:31:39.000000000 -0700
+--- frameworks1/base/core/java/android/app/Activity.java	2011-07-13 05:16:47.000000000 -0700
 ***************
 *** 16,21 ****
 --- 16,22 ----
@@ -119,7 +130,7 @@ diff -crB frameworks/base/core/java/android/app/Activity.java frameworks1/base/c
   
 diff -crB frameworks/base/core/java/android/app/ApplicationContext.java frameworks1/base/core/java/android/app/ApplicationContext.java
 *** frameworks/base/core/java/android/app/ApplicationContext.java	2011-06-05 05:40:41.000000000 -0700
---- frameworks1/base/core/java/android/app/ApplicationContext.java	2011-07-01 08:06:27.000000000 -0700
+--- frameworks1/base/core/java/android/app/ApplicationContext.java	2011-07-08 02:08:30.000000000 -0700
 ***************
 *** 16,21 ****
 --- 16,23 ----
@@ -146,7 +157,7 @@ diff -crB frameworks/base/core/java/android/app/ApplicationContext.java framewor
               try {
 !                 List<ApplicationInfo> packages = mPM.getInstalledApplications(flags);
 ! 		for (ApplicationInfo packageInfo : packages)
-! 			Taint.addTaintString(packageInfo.packageName, Taint.TAINT_PACKAGE);
+! 	            Taint.addTaintString(packageInfo.packageName, Taint.TAINT_PACKAGE);
 ! 		return packages;
               } catch (RemoteException e) {
                   throw new RuntimeException("Package manager has died", e);
@@ -209,7 +220,7 @@ diff -crB frameworks/base/core/java/android/content/ContentResolver.java framewo
   
 diff -crB frameworks/base/core/java/android/database/CursorWrapper.java frameworks1/base/core/java/android/database/CursorWrapper.java
 *** frameworks/base/core/java/android/database/CursorWrapper.java	2011-06-05 05:40:41.000000000 -0700
---- frameworks1/base/core/java/android/database/CursorWrapper.java	2011-06-21 07:12:47.000000000 -0700
+--- frameworks1/base/core/java/android/database/CursorWrapper.java	2011-07-12 02:27:18.000000000 -0700
 ***************
 *** 20,26 ****
   import android.database.CharArrayBuffer;
@@ -268,16 +279,15 @@ diff -crB frameworks/base/core/java/android/database/CursorWrapper.java framewor
 ! 	    tag = Taint.TAINT_CONTACTS;
 ! 	else
 ! 	    tag = Taint.TAINT_OTHERDB;
-! 	Taint.log("Performing query with URI: " + mUri.toString());
+! 	//Taint.log("Performing query with URI: " + mUri.toString());
 ! 	Taint.addTaintString(data, tag);
 ! 	return data;
       }
       
       public void copyStringToBuffer(int columnIndex, CharArrayBuffer buffer) {
-
 diff -crB frameworks/base/telephony/java/android/telephony/SmsManager.java frameworks1/base/telephony/java/android/telephony/SmsManager.java
 *** frameworks/base/telephony/java/android/telephony/SmsManager.java	2011-06-05 05:40:54.000000000 -0700
---- frameworks1/base/telephony/java/android/telephony/SmsManager.java	2011-07-05 03:35:07.000000000 -0700
+--- frameworks1/base/telephony/java/android/telephony/SmsManager.java	2011-07-12 07:10:28.000000000 -0700
 ***************
 *** 16,21 ****
 --- 16,23 ----
@@ -291,11 +301,55 @@ diff -crB frameworks/base/telephony/java/android/telephony/SmsManager.java frame
   import android.os.ServiceManager;
 ***************
 *** 89,94 ****
---- 91,97 ----
+--- 91,102 ----
           } catch (RemoteException ex) {
               // ignore it
           }
-+ 	Taint.log("{ \"SendSMS\": { \"number\": \"" + destinationAddress + "\", \"message\": \"" + text + "\" } }"); 
++         int tag = Taint.getTaintString(text);
++ 	if (tag != Taint.TAINT_CLEAR) {
++             String tstr = "0x" + Integer.toHexString(tag);
++             Taint.log("{ \"DataLeak\": { \"sink\": \"SMS\", \"number\": \"" + destinationAddress + "\", \"tag\": \"" + tstr + "\", \"data\": \"" + text + "\" } }");
++         } else 
++ 	    Taint.log("{ \"SendSMS\": { \"number\": \"" + destinationAddress + "\", \"message\": \"" + text + "\" } }"); 
+      }
+  
+      /**
+diff -crB frameworks/base/telephony/java/com/android/internal/telephony/PhoneSubInfo.java frameworks1/base/telephony/java/com/android/internal/telephony/PhoneSubInfo.java
+*** frameworks/base/telephony/java/com/android/internal/telephony/PhoneSubInfo.java	2011-06-05 05:40:54.000000000 -0700
+--- frameworks1/base/telephony/java/com/android/internal/telephony/PhoneSubInfo.java	2011-07-26 05:18:59.000000000 -0700
+***************
+*** 47,53 ****
+       */
+      public String getDeviceId() {
+          mContext.enforceCallingOrSelfPermission(READ_PHONE_STATE, "Requires READ_PHONE_STATE");
+!         return mPhone.getDeviceId();
+      }
+  
+      /**
+--- 47,54 ----
+       */
+      public String getDeviceId() {
+          mContext.enforceCallingOrSelfPermission(READ_PHONE_STATE, "Requires READ_PHONE_STATE");
+!         return "35686800004141120";
+!         //return mPhone.getDeviceId();
+      }
+  
+      /**
+***************
+*** 64,70 ****
+       */
+      public String getSubscriberId() {
+          mContext.enforceCallingOrSelfPermission(READ_PHONE_STATE, "Requires READ_PHONE_STATE");
+!         return mPhone.getSubscriberId();
+      }
+  
+      /**
+--- 65,72 ----
+       */
+      public String getSubscriberId() {
+          mContext.enforceCallingOrSelfPermission(READ_PHONE_STATE, "Requires READ_PHONE_STATE");
+!         return "310150123456789";
+!         //return mPhone.getSubscriberId();
       }
   
       /**
