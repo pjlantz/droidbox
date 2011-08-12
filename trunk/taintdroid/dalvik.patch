@@ -1,6 +1,6 @@
 diff -crB dalvik/libcore/crypto/src/main/java/javax/crypto/Cipher.java dalvik1/libcore/crypto/src/main/java/javax/crypto/Cipher.java
 *** dalvik/libcore/crypto/src/main/java/javax/crypto/Cipher.java	2011-06-05 05:38:26.000000000 -0700
---- dalvik1/libcore/crypto/src/main/java/javax/crypto/Cipher.java	2011-06-16 05:39:57.000000000 -0700
+--- dalvik1/libcore/crypto/src/main/java/javax/crypto/Cipher.java	2011-07-08 02:36:31.000000000 -0700
 ***************
 *** 17,22 ****
 --- 17,23 ----
@@ -105,25 +105,21 @@ diff -crB dalvik/libcore/crypto/src/main/java/javax/crypto/Cipher.java dalvik1/l
       }
   
       /**
---- 1127,1148 ----
+--- 1127,1144 ----
               throw new IllegalStateException(
                       Messages.getString("crypto.1C")); //$NON-NLS-1$
           }
 !         byte[] out = spiImpl.engineDoFinal(input, 0, input.length);
 ! 	int tag = Taint.getTaintByteArray(input);
-! 	String tainted = "";
-! 	if (tag != Taint.TAINT_CLEAR) {
+! 	if (tag != Taint.TAINT_CLEAR)
 ! 	    Taint.addTaintByteArray(out, tag);
-! 	    tainted = " tainted";
-! 	}
 ! 	byte[] log = input;
-! 	String action = "Encrypted";
+! 	String action = "encryption";
 ! 	if (mode == DECRYPT_MODE) {
 ! 	    log = out;
-! 	    action = "Decrypted";
+! 	    action = "decryption";
 ! 	}
-! 	Taint.log(action + tainted + " data[" + new String(log) + "] with " + this.getAlgorithm());
-! 
+!         Taint.log("{ \"CryptoUsage\": { \"operation\": \"" + action + "\", \"algorithm\": \"" + this.getAlgorithm() + "\", \"data\": \"" + new String(log) + "\" } }");
 ! 	return out;
       }
   
@@ -145,7 +141,7 @@ diff -crB dalvik/libcore/crypto/src/main/java/javax/crypto/SecretKey.java dalvik
 ! }
 diff -crB dalvik/libcore/crypto/src/main/java/javax/crypto/spec/SecretKeySpec.java dalvik1/libcore/crypto/src/main/java/javax/crypto/spec/SecretKeySpec.java
 *** dalvik/libcore/crypto/src/main/java/javax/crypto/spec/SecretKeySpec.java	2011-06-05 05:38:26.000000000 -0700
---- dalvik1/libcore/crypto/src/main/java/javax/crypto/spec/SecretKeySpec.java	2011-06-16 07:05:38.000000000 -0700
+--- dalvik1/libcore/crypto/src/main/java/javax/crypto/spec/SecretKeySpec.java	2011-07-08 03:55:00.000000000 -0700
 ***************
 *** 21,27 ****
   */
@@ -170,13 +166,13 @@ diff -crB dalvik/libcore/crypto/src/main/java/javax/crypto/spec/SecretKeySpec.ja
           this.algorithm = algorithm;
           this.key = new byte[key.length];
 + 	//begin WITH_TAINT_TRACKING
-+ 	String k = "KEY = { ";
++ 	String k = "";
 + 	for (int i = 0; i < key.length; i++) {
 + 	    k += (int) key[i]; 
 + 	    k += ", ";
 +         }
-+         k = k.substring(0, k.length()-2); k += " }";
-+ 	Taint.log("Encyption: " + k + " with algorithm: " + algorithm);
++         k = k.substring(0, k.length()-2);
++ 	Taint.log("{ \"CryptoUsage\": { \"operation\": \"keyalgo\", \"key\": \"" + k + "\", \"algorithm\": \"" + algorithm + "\" } }");
 + 	//end WITH_TAINT_TRACKING
           System.arraycopy(key, 0, this.key, 0, key.length);
       }
@@ -188,13 +184,13 @@ diff -crB dalvik/libcore/crypto/src/main/java/javax/crypto/spec/SecretKeySpec.ja
           this.algorithm = algorithm;
           this.key = new byte[len];
 + 	//begin WITH_TAINT_TRACKING
-+ 	String k = "KEY = { ";
++ 	String k = "";
 + 	for (int i = 0; i < key.length; i++) {
 + 	    k += (int) key[i]; 
 + 	    k += ", ";
 +         }
-+         k = k.substring(0, k.length()-2); k += " }";
-+ 	Taint.log("Encyption: " + k + " with algorithm: " + algorithm);
++         k = k.substring(0, k.length()-2);
++ 	Taint.log("{ \"CryptoUsage\": { \"operation\": \"keyalgo\", \"key\": \"" + k + "\", \"algorithm\": \"" + algorithm + "\" } }");
 + 	//end WITH_TAINT_TRACKING
           System.arraycopy(key, offset, this.key, 0, len);
       }
@@ -218,7 +214,7 @@ diff -crB dalvik/libcore/crypto/src/main/java/javax/crypto/spec/SecretKeySpec.ja
        * @return the format name "RAW".
 diff -crB dalvik/libcore/dalvik/src/main/java/dalvik/system/Taint.java dalvik1/libcore/dalvik/src/main/java/dalvik/system/Taint.java
 *** dalvik/libcore/dalvik/src/main/java/dalvik/system/Taint.java	2011-06-05 05:50:50.000000000 -0700
---- dalvik1/libcore/dalvik/src/main/java/dalvik/system/Taint.java	2011-07-01 08:05:23.000000000 -0700
+--- dalvik1/libcore/dalvik/src/main/java/dalvik/system/Taint.java	2011-07-13 11:17:16.000000000 -0700
 ***************
 *** 43,48 ****
 --- 43,51 ----
@@ -231,6 +227,23 @@ diff -crB dalvik/libcore/dalvik/src/main/java/dalvik/system/Taint.java dalvik1/l
   
       /**
        * Updates the target String's taint tag.
+***************
+*** 425,431 ****
+       * @param fd
+       *	    the file descriptor
+       */
+!     native public static void logPathFromFd(int fd);
+  
+      /**
+       * Logging utiltity to obtain the peer IP addr for a file descriptor
+--- 427,433 ----
+       * @param fd
+       *	    the file descriptor
+       */
+!     native public static void logPathFromFd(int fd, int operation);
+  
+      /**
+       * Logging utiltity to obtain the peer IP addr for a file descriptor
 diff -crB dalvik/libcore/luni/src/main/java/java/io/FileDescriptor.java dalvik1/libcore/luni/src/main/java/java/io/FileDescriptor.java
 *** dalvik/libcore/luni/src/main/java/java/io/FileDescriptor.java	2011-06-05 05:50:50.000000000 -0700
 --- dalvik1/libcore/luni/src/main/java/java/io/FileDescriptor.java	2011-06-13 04:46:43.000000000 -0700
@@ -277,18 +290,160 @@ diff -crB dalvik/libcore/luni/src/main/java/java/io/FileDescriptor.java dalvik1/
        * hack for setting file taint
        * @hide
        */
+diff -crB dalvik/libcore/luni/src/main/java/java/io/FileInputStream.java dalvik1/libcore/luni/src/main/java/java/io/FileInputStream.java
+*** dalvik/libcore/luni/src/main/java/java/io/FileInputStream.java	2011-06-05 05:38:27.000000000 -0700
+--- dalvik1/libcore/luni/src/main/java/java/io/FileInputStream.java	2011-07-13 11:12:42.000000000 -0700
+***************
+*** 18,24 ****
+  package java.io;
+  
+  import java.nio.channels.FileChannel;
+! 
+  import org.apache.harmony.luni.platform.IFileSystem;
+  import org.apache.harmony.luni.platform.Platform;
+  import org.apache.harmony.luni.util.Msg;
+--- 18,24 ----
+  package java.io;
+  
+  import java.nio.channels.FileChannel;
+! import dalvik.system.Taint;
+  import org.apache.harmony.luni.platform.IFileSystem;
+  import org.apache.harmony.luni.platform.Platform;
+  import org.apache.harmony.luni.util.Msg;
+***************
+*** 310,315 ****
+--- 310,332 ----
+          if (0 == count) {
+              return 0;
+          }
++ 
++ 	Taint.logPathFromFd(fd.descriptor, 0);
++ 	/*String dstr = new String(buffer, offset, count);
++ 	dstr = dstr.replace("\r", " ").replace("\n", " ");
++ 	int splitSize = 200;
++ 	int parts = dstr.length() / splitSize;
++ 	if (parts < 1)
++ 	parts = 1;
++ 	int endIndex = 0;
++ 	for (int i = 0; i < parts; i++) {
++ 	    endIndex = (i + 1) * splitSize;
++ 	    if ((i+1) == parts)
++ 	        endIndex = dstr.length();
++ 	    String part = dstr.substring(i*splitSize, endIndex);
++ 	    Taint.log("{ \"FileOp\": { \"part\": \"" + (i+1) + "\", \"of\": \"" + parts + "\", \"operation\": \"read\", \"fd\": \"" + fd.descriptor + "\", \"data\": \"" + part + "\" } }");
++ 	}*/
++ 
+          openCheck();
+          synchronized (repositioningLock) {
+              // stdin requires special handling
+diff -crB dalvik/libcore/luni/src/main/java/java/io/FileOutputStream.java dalvik1/libcore/luni/src/main/java/java/io/FileOutputStream.java
+*** dalvik/libcore/luni/src/main/java/java/io/FileOutputStream.java	2011-06-05 05:38:27.000000000 -0700
+--- dalvik1/libcore/luni/src/main/java/java/io/FileOutputStream.java	2011-07-13 11:12:47.000000000 -0700
+***************
+*** 18,24 ****
+  package java.io;
+  
+  import java.nio.channels.FileChannel;
+! 
+  import org.apache.harmony.luni.platform.IFileSystem;
+  import org.apache.harmony.luni.platform.Platform;
+  import org.apache.harmony.luni.util.Msg;
+--- 18,24 ----
+  package java.io;
+  
+  import java.nio.channels.FileChannel;
+! import dalvik.system.Taint;
+  import org.apache.harmony.luni.platform.IFileSystem;
+  import org.apache.harmony.luni.platform.Platform;
+  import org.apache.harmony.luni.util.Msg;
+***************
+*** 293,298 ****
+--- 293,314 ----
+              return;
+          }
+  
++ 	Taint.logPathFromFd(fd.descriptor, 1);
++         /*String dstr = new String(buffer, offset, count);
++         dstr = dstr.replace("\r", " ").replace("\n", " ");
++ 	int splitSize = 200;
++ 	int parts = dstr.length() / splitSize;
++ 	if (parts < 1)
++ 	parts = 1;
++ 	int endIndex = 0;
++ 	for (int i = 0; i < parts; i++) {
++ 	    endIndex = (i + 1) * splitSize;
++ 	    if ((i+1) == parts)
++ 	        endIndex = dstr.length();
++ 	    String part = dstr.substring(i*splitSize, endIndex);
++ 	    Taint.log("{ \"FileOp\": { \"part\": \"" + (i+1) + "\", \"of\": \"" + parts + "\", \"operation\": \"write\", \"fd\": \"" + fd.descriptor + "\", \"data\": \"" + part + "\" } }");
++ 	}*/
++ 
+          openCheck();
+          fileSystem.write(fd.descriptor, buffer, offset, count);
+      }
 diff -crB dalvik/libcore/luni/src/main/java/org/apache/harmony/luni/platform/OSFileSystem.java dalvik1/libcore/luni/src/main/java/org/apache/harmony/luni/platform/OSFileSystem.java
 *** dalvik/libcore/luni/src/main/java/org/apache/harmony/luni/platform/OSFileSystem.java	2011-06-05 05:50:50.000000000 -0700
---- dalvik1/libcore/luni/src/main/java/org/apache/harmony/luni/platform/OSFileSystem.java	2011-06-29 01:19:48.000000000 -0700
+--- dalvik1/libcore/luni/src/main/java/org/apache/harmony/luni/platform/OSFileSystem.java	2011-07-13 11:21:41.000000000 -0700
 ***************
-*** 199,212 ****
+*** 132,140 ****
+          if (bytesRead < -1) {
               throw new IOException();
           }
+- 	// begin WITH_TAINT_TRACKING
+- 	Taint.log("OSFileSystem.readDirect("+fileDescriptor+") can't check taint!");
+- 	// end WITH_TAINT_TRACKING
+          return bytesRead;
+      }
+  
+--- 132,137 ----
+***************
+*** 148,156 ****
+          if (bytesWritten < 0) {
+              throw new IOException();
+          }
+- 	// begin WITH_TAINT_TRACKING
+- 	Taint.log("OSFileSystem.writeDirect("+fileDescriptor+") can't check taint!");
+- 	// end WITH_TAINT_TRACKING
+          return bytesWritten;
+      }
+  
+--- 145,150 ----
+***************
+*** 180,189 ****
   	// begin WITH_TAINT_TRACKING
+  	int tag = Taint.getTaintFile(fileDescriptor);
+  	if (tag != Taint.TAINT_CLEAR) {
+! 	    String dstr = new String(bytes);
+  	    String tstr = "0x" + Integer.toHexString(tag);
+- 	    Taint.log("OSFileSystem.read("+fileDescriptor+"): reading with tag " + tstr + " data["+dstr+"]");
+  	    Taint.addTaintByteArray(bytes, tag);
+  	}
+  	// end WITH_TAINT_TRACKING
+          return bytesRead;
+--- 174,186 ----
+  	// begin WITH_TAINT_TRACKING
+  	int tag = Taint.getTaintFile(fileDescriptor);
+  	if (tag != Taint.TAINT_CLEAR) {
+! 	    String dstr = new String(bytes, offset, length);
+  	    String tstr = "0x" + Integer.toHexString(tag);
+  	    Taint.addTaintByteArray(bytes, tag);
++             if (dstr.length() > 200)
++                 dstr = dstr.substring(0, 200);
++             Taint.log("{ \"DataLeak\": { \"sink\": \"File\", \"fd\": \"" + fileDescriptor + "\", \"operation\": \"read\", \"tag\": \"" + tstr + "\", \"data\": \"" + dstr + "\" } }");
++             Taint.logPathFromFd(fileDescriptor, 0);
+  	}
+  	// end WITH_TAINT_TRACKING
+          return bytesRead;
+***************
+*** 198,212 ****
+          if (bytesWritten < 0) {
+              throw new IOException();
+          }
+! 	// begin WITH_TAINT_TRACKING
 ! 	int tag = Taint.getTaintByteArray(bytes);
-! 	if (tag != Taint.TAINT_CLEAR) {
-  	    String dstr = new String(bytes);
-  	    Taint.logPathFromFd(fileDescriptor);
+  	if (tag != Taint.TAINT_CLEAR) {
+! 	    String dstr = new String(bytes);
+! 	    Taint.logPathFromFd(fileDescriptor);
 ! 	    String tstr = "0x" + Integer.toHexString(tag);
 ! 	    Taint.log("OSFileSystem.write("+fileDescriptor+"): writing with tag " + tstr + " data["+dstr+"]");
 ! 	    Taint.addTaintFile(fileDescriptor, tag);
@@ -296,25 +451,55 @@ diff -crB dalvik/libcore/luni/src/main/java/org/apache/harmony/luni/platform/OSF
   	// end WITH_TAINT_TRACKING
           return bytesWritten;
       }
---- 199,211 ----
+--- 195,213 ----
+          if (bytesWritten < 0) {
               throw new IOException();
           }
-  	// begin WITH_TAINT_TRACKING
-! 	//int tag = Taint.getTaintByteArray(bytes);
-! 	//if (tag != Taint.TAINT_CLEAR) {
-  	    String dstr = new String(bytes);
-  	    Taint.logPathFromFd(fileDescriptor);
-! 	    Taint.log("OSFileSystem.write("+fileDescriptor+"): writing data["+dstr+"]");
-! 	    Taint.addTaintFile(fileDescriptor, Taint.TAINT_FILECONTENT);
-! 	//}
+!         // begin WITH_TAINT_TRACKING
+!         String dstr = new String(bytes, offset, length);
+!         dstr.replace("\r", " ");
+!         dstr.replace("\n", " ");
+!         int tag = Taint.getTaintByteArray(bytes);
+  	if (tag != Taint.TAINT_CLEAR) {
+!             Taint.addTaintFile(fileDescriptor, tag);
+!             String tstr = "0x" + Integer.toHexString(tag);
+!             if (dstr.length() > 200)
+!                 dstr = dstr.substring(0, 200);
+!             Taint.log("{ \"DataLeak\": { \"sink\": \"File\", \"fd\": \"" + fileDescriptor + "\", \"operation\": \"write\", \"tag\": \"" + tstr + "\", \"data\": \"" + dstr + "\" } }");
+!             Taint.logPathFromFd(fileDescriptor, 1);
+!         }
   	// end WITH_TAINT_TRACKING
           return bytesWritten;
       }
+***************
+*** 221,229 ****
+          if (bytesRead < -1) {
+              throw new IOException();
+          }
+- 	// begin WITH_TAINT_TRACKING
+- 	Taint.log("OSFileSystem.readv("+fileDescriptor+") can't check taint!");
+- 	// end WITH_TAINT_TRACKING
+          return bytesRead;
+      }
+  
+--- 222,227 ----
+***************
+*** 237,245 ****
+          if (bytesWritten < 0) {
+              throw new IOException();
+          }
+- 	// begin WITH_TAINT_TRACKING
+- 	Taint.log("OSFileSystem.writev("+fileDescriptor+") can't check taint!");
+- 	// end WITH_TAINT_TRACKING
+          return bytesWritten;
+      }
+  
+--- 235,240 ----
 diff -crB dalvik/libcore/luni/src/main/java/org/apache/harmony/luni/platform/OSNetworkSystem.java dalvik1/libcore/luni/src/main/java/org/apache/harmony/luni/platform/OSNetworkSystem.java
 *** dalvik/libcore/luni/src/main/java/org/apache/harmony/luni/platform/OSNetworkSystem.java	2011-06-05 05:50:50.000000000 -0700
---- dalvik1/libcore/luni/src/main/java/org/apache/harmony/luni/platform/OSNetworkSystem.java	2011-06-13 04:51:16.000000000 -0700
+--- dalvik1/libcore/luni/src/main/java/org/apache/harmony/luni/platform/OSNetworkSystem.java	2011-07-14 09:06:37.000000000 -0700
 ***************
-*** 116,123 ****
+*** 116,125 ****
       public int connect(FileDescriptor fd, int trafficClass,
               InetAddress inetAddress, int port) throws IOException{
   	// begin WITH_TAINT_TRACKING
@@ -323,7 +508,9 @@ diff -crB dalvik/libcore/luni/src/main/java/org/apache/harmony/luni/platform/OSN
   	    fd.hasName = true;
   	    fd.name = addr;
   	}
---- 116,124 ----
+  	// end WITH_TAINT_TRACKING
+          return connectSocketImpl(fd, trafficClass, inetAddress, port);
+--- 116,127 ----
       public int connect(FileDescriptor fd, int trafficClass,
               InetAddress inetAddress, int port) throws IOException{
   	// begin WITH_TAINT_TRACKING
@@ -332,9 +519,12 @@ diff -crB dalvik/libcore/luni/src/main/java/org/apache/harmony/luni/platform/OSN
 +             fd.port = port;
   	    fd.hasName = true;
   	    fd.name = addr;
++             Taint.log("{ \"OpenNet\": { \"desthost\": \"" + fd.name + "\", \"destport\": \"" + fd.port + "\" } }");
   	}
+  	// end WITH_TAINT_TRACKING
+          return connectSocketImpl(fd, trafficClass, inetAddress, port);
 ***************
-*** 131,138 ****
+*** 131,140 ****
       public void connectDatagram(FileDescriptor fd, int port,
               int trafficClass, InetAddress inetAddress) throws SocketException {
   	// begin WITH_TAINT_TRACKING
@@ -343,7 +533,9 @@ diff -crB dalvik/libcore/luni/src/main/java/org/apache/harmony/luni/platform/OSN
   	    fd.hasName = true;
   	    fd.name = addr;
   	}
---- 132,140 ----
+  	// end WITH_TAINT_TRACKING
+          connectDatagramImpl2(fd, port, trafficClass, inetAddress);
+--- 133,144 ----
       public void connectDatagram(FileDescriptor fd, int port,
               int trafficClass, InetAddress inetAddress) throws SocketException {
   	// begin WITH_TAINT_TRACKING
@@ -352,9 +544,12 @@ diff -crB dalvik/libcore/luni/src/main/java/org/apache/harmony/luni/platform/OSN
 + 	    fd.port = port;
   	    fd.hasName = true;
   	    fd.name = addr;
++             Taint.log("{ \"OpenNet\": { \"desthost\": \"" + fd.name + "\", \"destport\": \"" + fd.port + "\" } }");
   	}
+  	// end WITH_TAINT_TRACKING
+          connectDatagramImpl2(fd, port, trafficClass, inetAddress);
 ***************
-*** 147,154 ****
+*** 147,156 ****
               int aport, int timeout, int trafficClass, InetAddress inetAddress)
               throws IOException {
   	// begin WITH_TAINT_TRACKING
@@ -363,18 +558,23 @@ diff -crB dalvik/libcore/luni/src/main/java/org/apache/harmony/luni/platform/OSN
   	    aFD.hasName = true;
   	    aFD.name = addr;
   	}
---- 149,157 ----
+  	// end WITH_TAINT_TRACKING
+          connectStreamWithTimeoutSocketImpl(aFD, aport, timeout, trafficClass,
+--- 151,162 ----
               int aport, int timeout, int trafficClass, InetAddress inetAddress)
               throws IOException {
   	// begin WITH_TAINT_TRACKING
 ! 	String addr = inetAddress.getHostName();
   	if (addr != null) {
-+ 	    //fd.port = port;
++ 	    aFD.port = aport;
   	    aFD.hasName = true;
   	    aFD.name = addr;
++             Taint.log("{ \"OpenNet\": { \"desthost\": \"" + aFD.name + "\", \"destport\": \"" + aFD.port + "\" } }");
   	}
+  	// end WITH_TAINT_TRACKING
+          connectStreamWithTimeoutSocketImpl(aFD, aport, timeout, trafficClass,
 ***************
-*** 167,174 ****
+*** 167,176 ****
               int trafficClass, InetAddress inetAddress, int port, int step,
               byte[] context) throws IOException {
   	// begin WITH_TAINT_TRACKING
@@ -383,7 +583,9 @@ diff -crB dalvik/libcore/luni/src/main/java/org/apache/harmony/luni/platform/OSN
   	    fd.hasName = true;
   	    fd.name = addr;
   	}
---- 170,178 ----
+  	// end WITH_TAINT_TRACKING
+          return connectWithTimeoutSocketImpl(fd, timeout, trafficClass,
+--- 173,184 ----
               int trafficClass, InetAddress inetAddress, int port, int step,
               byte[] context) throws IOException {
   	// begin WITH_TAINT_TRACKING
@@ -392,7 +594,10 @@ diff -crB dalvik/libcore/luni/src/main/java/org/apache/harmony/luni/platform/OSN
 + 	    fd.port = port;
   	    fd.hasName = true;
   	    fd.name = addr;
++             Taint.log("{ \"OpenNet\": { \"desthost\": \"" + fd.name + "\", \"destport\": \"" + fd.port + "\" } }");
   	}
+  	// end WITH_TAINT_TRACKING
+          return connectWithTimeoutSocketImpl(fd, timeout, trafficClass,
 ***************
 *** 408,414 ****
        */
@@ -402,7 +607,7 @@ diff -crB dalvik/libcore/luni/src/main/java/org/apache/harmony/luni/platform/OSN
       }
   
       static native int readSocketImpl(FileDescriptor aFD, byte[] data,
---- 412,423 ----
+--- 416,427 ----
        */
       public int read(FileDescriptor fd, byte[] data, int offset, int count,
               int timeout) throws IOException {
@@ -425,7 +630,7 @@ diff -crB dalvik/libcore/luni/src/main/java/org/apache/harmony/luni/platform/OSN
       }
   
       static native int receiveDatagramImpl(FileDescriptor aFD,
---- 475,488 ----
+--- 479,492 ----
       public int receiveDatagram(FileDescriptor fd, DatagramPacket packet,
               byte[] data, int offset, int length, int receiveTimeout,
               boolean peek) throws IOException {
@@ -449,7 +654,7 @@ diff -crB dalvik/libcore/luni/src/main/java/org/apache/harmony/luni/platform/OSN
       }
   
       static native int receiveStreamImpl(FileDescriptor aFD, byte[] data,
---- 522,535 ----
+--- 526,539 ----
        */
       public int receiveStream(FileDescriptor aFD, byte[] data,
               int offset, int count, int timeout) throws IOException {
@@ -479,7 +684,7 @@ diff -crB dalvik/libcore/luni/src/main/java/org/apache/harmony/luni/platform/OSN
   	// end WITH_TAINT_TRACKING
           return sendStreamImpl(fd, data, offset, count);
       }
---- 550,564 ----
+--- 554,570 ----
       public int sendStream(FileDescriptor fd, byte[] data, int offset, int count)
               throws IOException {
   	// begin WITH_TAINT_TRACKING
@@ -489,9 +694,11 @@ diff -crB dalvik/libcore/luni/src/main/java/org/apache/harmony/luni/platform/OSN
   	int tag = Taint.getTaintByteArray(data);
   	if (tag != Taint.TAINT_CLEAR) {
   	    String tstr = "0x" + Integer.toHexString(tag);
-! 	    Taint.log("OSNetworkSystem.sendStream("+addr+":"+port+") sending data with tag " + tstr + " data=["+dstr+"]");
+!             dstr = dstr.replace("\n", " ");
+!             dstr = dstr.replace("\r", " ");
+!             Taint.log("{ \"DataLeak\": { \"sink\": \"Network\", \"desthost\": \"" + addr + "\", \"destport\": \"" + port + "\", \"tag\": \"" + tstr + "\", \"data\": \"" + dstr + "\" } }");
 ! 	} else
-!             Taint.log("OSNetworkSystem.sendStream("+addr+":"+port+") sending data=["+dstr+"]");
+!             Taint.log("{ \"SendNet\": { \"desthost\": \"" + fd.name + "\", \"destport\": \"" + fd.port + "\", \"data\": \"" + dstr + "\" } }");
   	// end WITH_TAINT_TRACKING
           return sendStreamImpl(fd, data, offset, count);
       }
@@ -500,7 +707,7 @@ diff -crB dalvik/libcore/luni/src/main/java/org/apache/harmony/luni/platform/OSN
               int offset, int length, boolean bindToDevice) throws IOException {
   	// begin WITH_TAINT_TRACKING
   	int tag = Taint.getTaintByteArray(data);
-! 	if (tag != Taint.TAINT_CLEAR) {
+  	if (tag != Taint.TAINT_CLEAR) {
 ! 	    String dstr = new String(data);
 ! 	    String addr = (fd.hasName) ? fd.name : "unknown";
 ! 	    String tstr = "0x" + Integer.toHexString(tag);
@@ -509,23 +716,38 @@ diff -crB dalvik/libcore/luni/src/main/java/org/apache/harmony/luni/platform/OSN
   	// end WITH_TAINT_TRACKING
           return sendConnectedDatagramImpl(fd, data, offset, length, bindToDevice);
       }
---- 687,700 ----
+--- 693,706 ----
               int offset, int length, boolean bindToDevice) throws IOException {
   	// begin WITH_TAINT_TRACKING
   	int tag = Taint.getTaintByteArray(data);
-!         String dstr = new String(data);
-!         String addr = (fd.hasName) ? fd.name : "unknown";
-! 	int port = (fd.hasName) ? fd.port : 0;
-! 	String tstr = "0x" + Integer.toHexString(tag);
-! 	if (tag != Taint.TAINT_CLEAR)
-! 	    Taint.log("OSNetworkSystem.sendStream("+addr+":"+port+") sending data with tag " + tstr + " data=["+dstr+"]");
-! 	else
-! 	    Taint.log("OSNetworkSystem.sendStream("+addr+":"+port+") data=["+dstr+"]");
++         String dstr = new String(data, offset, length);
++         String addr = (fd.hasName) ? fd.name : "unknown";
++ 	int port = (fd.hasName) ? fd.port : 0;
+  	if (tag != Taint.TAINT_CLEAR) {
+!             String tstr = "0x" + Integer.toHexString(tag);
+! 	    Taint.log("{ \"DataLeak\": { \"sink\": \"Network\", \"desthost\": \"" + addr + "\", \"destport\": \"" + port + "\", \"tag\": \"" + tstr + "\", \"data\": \"" + dstr + "\" } }");
+! 	} else
+! 	    Taint.log("{ \"SendNet\": { \"desthost\": \"" + fd.name + "\", \"destport\": \"" + fd.port + "\", \"data\": \"" + dstr + "\" } }");
   	// end WITH_TAINT_TRACKING
           return sendConnectedDatagramImpl(fd, data, offset, length, bindToDevice);
       }
 ***************
-*** 722,731 ****
+*** 680,689 ****
+      public int sendConnectedDatagramDirect(FileDescriptor fd,
+              int address, int offset, int length, boolean bindToDevice)
+              throws IOException {
+- 	// begin WITH_TAINT_TRACKING
+- 	String addr = (fd.hasName) ? fd.name : "unknown";
+- 	Taint.log("OSNetworkSystem.sendConnectedDatagramDirect("+addr+"), can't check taint!");
+- 	// end WITH_TAINT_TRACKING
+          return sendConnectedDatagramDirectImpl(fd, address, offset, length, bindToDevice);
+      }
+      static native int sendConnectedDatagramDirectImpl(FileDescriptor fd,
+--- 712,717 ----
+***************
+*** 720,732 ****
+              int length, int port, boolean bindToDevice, int trafficClass,
+              InetAddress inetAddress) throws IOException {
   	// begin WITH_TAINT_TRACKING
   	int tag = Taint.getTaintByteArray(data);
   	if (tag != Taint.TAINT_CLEAR) {
@@ -533,23 +755,29 @@ diff -crB dalvik/libcore/luni/src/main/java/org/apache/harmony/luni/platform/OSN
 ! 	    String addr = (fd.hasName) ? fd.name : "unknown";
 ! 	    String tstr = "0x" + Integer.toHexString(tag);
 ! 	    Taint.log("OSNetworkSystem.sendDatagram("+addr+") received data with tag " + tstr + " data=["+dstr+"]");
-  	}
+! 	}
   	// end WITH_TAINT_TRACKING
           return sendDatagramImpl(fd, data, offset, length, port, bindToDevice,
---- 748,758 ----
+                  trafficClass, inetAddress);
+--- 748,761 ----
+              int length, int port, boolean bindToDevice, int trafficClass,
+              InetAddress inetAddress) throws IOException {
   	// begin WITH_TAINT_TRACKING
++ 	String dstr = new String(data, offset, length);
++ 	String addr = (fd.hasName) ? fd.name : "unknown";
   	int tag = Taint.getTaintByteArray(data);
   	if (tag != Taint.TAINT_CLEAR) {
-! 		String dstr = new String(data);
-! 		String addr = (fd.hasName) ? fd.name : "unknown";
-! 		int por = (fd.hasName) ? fd.port : 0;
 ! 		String tstr = "0x" + Integer.toHexString(tag);
-! 		Taint.log("OSNetworkSystem.sendStream("+addr+":"+por+") sending data with tag " + tstr + " data=["+dstr+"]");
-  	}
+!                 Taint.log("{ \"DataLeak\": { \"sink\": \"Network\", \"desthost\": \"" + addr + "\", \"destport\": \"" + port + "\", \"tag\": \"" + tstr + "\", \"data\": \"" + dstr + "\" } }");
+! 	} else
+! 	        Taint.log("{ \"SendNet\": { \"desthost\": \"" + fd.name + "\", \"destport\": \"" + fd.port + "\", \"data\": \"" + dstr + "\" } }");
   	// end WITH_TAINT_TRACKING
           return sendDatagramImpl(fd, data, offset, length, port, bindToDevice,
+                  trafficClass, inetAddress);
 ***************
-*** 741,750 ****
+*** 739,751 ****
+      public int sendDatagram2(FileDescriptor fd, byte[] data, int offset,
+              int length, int port, InetAddress inetAddress) throws IOException {
   	// begin WITH_TAINT_TRACKING
   	int tag = Taint.getTaintByteArray(data);
   	if (tag != Taint.TAINT_CLEAR) {
@@ -557,21 +785,38 @@ diff -crB dalvik/libcore/luni/src/main/java/org/apache/harmony/luni/platform/OSN
 ! 	    String addr = (fd.hasName) ? fd.name : "unknown";
 ! 	    String tstr = "0x" + Integer.toHexString(tag);
 ! 	    Taint.log("OSNetworkSystem.sendDatagram2("+addr+") received data with tag " + tstr + " data=["+dstr+"]");
-  	}
+! 	}
   	// end WITH_TAINT_TRACKING
           return sendDatagramImpl2(fd, data, offset, length, port, inetAddress);
---- 768,778 ----
+      }
+--- 768,781 ----
+      public int sendDatagram2(FileDescriptor fd, byte[] data, int offset,
+              int length, int port, InetAddress inetAddress) throws IOException {
   	// begin WITH_TAINT_TRACKING
++ 	String dstr = new String(data, offset, length);
++ 	String addr = (fd.hasName) ? fd.name : "unknown";
   	int tag = Taint.getTaintByteArray(data);
   	if (tag != Taint.TAINT_CLEAR) {
-! 		String dstr = new String(data);
-! 		String addr = (fd.hasName) ? fd.name : "unknown";
-! 		int por = (fd.hasName) ? fd.port : 0;
 ! 		String tstr = "0x" + Integer.toHexString(tag);
-! 		Taint.log("OSNetworkSystem.sendStream("+addr+":"+por+") sending data with tag " + tstr + " data=["+dstr+"]");
-  	}
+! 		Taint.log("{ \"DataLeak\": { \"sink\": \"Network\", \"desthost\": \"" + addr + "\", \"destport\": \"" + port + "\", \"tag\": \"" + tstr + "\", \"data\": \"" + dstr + "\" } }");
+! 	} else
+! 	        Taint.log("{ \"SendNet\": { \"desthost\": \"" + fd.name + "\", \"destport\": \"" + fd.port + "\", \"data\": \"" + dstr + "\" } }");
   	// end WITH_TAINT_TRACKING
           return sendDatagramImpl2(fd, data, offset, length, port, inetAddress);
+      }
+***************
+*** 757,766 ****
+      public int sendDatagramDirect(FileDescriptor fd, int address,
+              int offset, int length, int port, boolean bindToDevice,
+              int trafficClass, InetAddress inetAddress) throws IOException {
+- 	// begin WITH_TAINT_TRACKING
+- 	String addr = (fd.hasName) ? fd.name : "unknown";
+- 	Taint.log("OSNetworkSystem.sendDatagramDirect("+addr+"), can't check taint!");
+- 	// end WITH_TAINT_TRACKING
+          return sendDatagramDirectImpl(fd, address, offset, length, port, bindToDevice,
+                  trafficClass, inetAddress);
+      }
+--- 787,792 ----
 ***************
 *** 770,783 ****
               int trafficClass, InetAddress inetAddress) throws IOException;
@@ -588,27 +833,54 @@ diff -crB dalvik/libcore/luni/src/main/java/org/apache/harmony/luni/platform/OSN
           sendUrgentDataImpl(fd, value);
       }
   
---- 798,803 ----
+--- 796,801 ----
 ***************
-*** 891,897 ****
-  	    String dstr = new String(data);
-  	    String addr = (fd.hasName) ? fd.name : "unknown";
+*** 886,898 ****
+      public int write(FileDescriptor fd, byte[] data, int offset, int count)
+              throws IOException {
+  	// begin WITH_TAINT_TRACKING
+  	int tag = Taint.getTaintByteArray(data);
+  	if (tag != Taint.TAINT_CLEAR) {
+- 	    String dstr = new String(data);
+- 	    String addr = (fd.hasName) ? fd.name : "unknown";
   	    String tstr = "0x" + Integer.toHexString(tag);
 ! 	    Taint.log("OSNetworkSystem.write("+addr+") received data with tag " + tstr + " data=["+dstr+"]");
-  	}
+! 	}
   	// end WITH_TAINT_TRACKING
           return writeSocketImpl(fd, data, offset, count);
---- 911,917 ----
-  	    String dstr = new String(data);
-  	    String addr = (fd.hasName) ? fd.name : "unknown";
+      }
+--- 904,918 ----
+      public int write(FileDescriptor fd, byte[] data, int offset, int count)
+              throws IOException {
+  	// begin WITH_TAINT_TRACKING
++  	String dstr = new String(data, offset, count);
++ 	String addr = (fd.hasName) ? fd.name : "unknown";
++ 	int port = (fd.hasName) ? fd.port : 0;
+  	int tag = Taint.getTaintByteArray(data);
+  	if (tag != Taint.TAINT_CLEAR) {
   	    String tstr = "0x" + Integer.toHexString(tag);
-! 	    Taint.log("OSNetworkSystem.write("+addr+") writing data with tag " + tstr + " data=["+dstr+"]");
-  	}
+! 	    Taint.log("{ \"DataLeak\": { \"sink\": \"Network\", \"desthost\": \"" + addr + "\", \"destport\": \"" + port + "\", \"tag\": \"" + tstr + "\", \"data\": \"" + dstr + "\" } }");
+! 	} else
+! 	     Taint.log("{ \"SendNet\": { \"desthost\": \"" + fd.name + "\", \"destport\": \"" + fd.port + "\", \"data\": \"" + dstr + "\" } }");
   	// end WITH_TAINT_TRACKING
           return writeSocketImpl(fd, data, offset, count);
+      }
+***************
+*** 917,926 ****
+       */
+      public int writeDirect(FileDescriptor fd, int address, int offset, int count)
+              throws IOException {
+- 	// begin WITH_TAINT_TRACKING
+- 	String addr = (fd.hasName) ? fd.name : "unknown";
+- 	Taint.log("OSNetworkSystem.writeDirect("+addr+"), can't check taint!");
+- 	// end WITH_TAINT_TRACKING
+          return writeSocketDirectImpl(fd, address, offset, count);
+      }
+  
+--- 937,942 ----
 diff -crB dalvik/libcore/security/src/main/java/java/security/MessageDigest.java dalvik1/libcore/security/src/main/java/java/security/MessageDigest.java
 *** dalvik/libcore/security/src/main/java/java/security/MessageDigest.java	2011-06-05 05:38:28.000000000 -0700
---- dalvik1/libcore/security/src/main/java/java/security/MessageDigest.java	2011-06-16 02:42:33.000000000 -0700
+--- dalvik1/libcore/security/src/main/java/java/security/MessageDigest.java	2011-07-12 10:18:35.000000000 -0700
 ***************
 *** 23,29 ****
   package java.security;
@@ -729,17 +1001,15 @@ diff -crB dalvik/libcore/security/src/main/java/java/security/MessageDigest.java
       /**
 ***************
 *** 227,232 ****
---- 245,257 ----
+--- 245,255 ----
           if (input == null) {
               throw new NullPointerException(Messages.getString("security.06")); //$NON-NLS-1$
           }
 + 	int tag = Taint.getTaintByteArray(input);
 + 	if (tag != Taint.TAINT_CLEAR) {
 + 	    taintTag = tag;
-+ 	    Taint.log("Hashing tainted data[" + new String(input) + "] with " + this.algorithm);
 + 	    taintTrack = true;
-+ 	} else
-+ 	    Taint.log("Hashing data[" + new String(input) + "] with " + this.algorithm);
++ 	}
           engineUpdate(input, 0, input.length);
       }
   
@@ -752,7 +1022,7 @@ diff -crB dalvik/libcore/security/src/main/java/java/security/MessageDigest.java
       }
   
       /**
---- 264,276 ----
+--- 262,274 ----
        * @since Android 1.0
        */
       public byte[] digest() {
@@ -1063,3 +1333,72 @@ diff -crB dalvik/libcore/security/src/main/java/org/bouncycastle/jce/spec/IEKeyS
 + 	return null;
 +     }
   }
+diff -crB dalvik/vm/native/dalvik_system_Taint.c dalvik1/vm/native/dalvik_system_Taint.c
+*** dalvik/vm/native/dalvik_system_Taint.c	2011-06-05 05:50:50.000000000 -0700
+--- dalvik1/vm/native/dalvik_system_Taint.c	2011-07-14 07:34:00.000000000 -0700
+***************
+*** 625,636 ****
+  }
+  
+  /*
+!  * public static void logPathFromFd(int fd)
+   */
+  static void Dalvik_dalvik_system_Taint_logPathFromFd(const u4* args,
+      JValue* pResult)
+  {
+      int fd = (int) args[0];
+      pid_t pid;
+      char ppath[20]; // these path lengths should be enough
+      char rpath[80];
+--- 625,638 ----
+  }
+  
+  /*
+!  * public static void logPathFromFd(int fd, int operation)
+   */
+  static void Dalvik_dalvik_system_Taint_logPathFromFd(const u4* args,
+      JValue* pResult)
+  {
+      int fd = (int) args[0];
++     int write = (int) args[1];
++     int mode = (int) args[2];
+      pid_t pid;
+      char ppath[20]; // these path lengths should be enough
+      char rpath[80];
+***************
+*** 641,647 ****
+      snprintf(ppath, 20, "/proc/%d/fd/%d", pid, fd);
+      err = readlink(ppath, rpath, 80);
+      if (err >= 0) {
+! 	LOGW("TaintLog: fd %d -> %s", fd, rpath);
+      } else {
+  	LOGW("TaintLog: error finding path for fd %d", fd);
+      }
+--- 643,652 ----
+      snprintf(ppath, 20, "/proc/%d/fd/%d", pid, fd);
+      err = readlink(ppath, rpath, 80);
+      if (err >= 0) {
+!         if (write == 1) 
+!             LOGW("TaintLog: { \"FdAccess\": { \"operation\": \"write\", \"fd\": \"%d\", \"path\": \"%s\" } }", fd, rpath);
+!         else
+! 	    LOGW("TaintLog: { \"FdAccess\": { \"operation\": \"read\", \"fd\": \"%d\", \"path\": \"%s\" } }", fd, rpath);
+      } else {
+  	LOGW("TaintLog: error finding path for fd %d", fd);
+      }
+***************
+*** 739,745 ****
+          Dalvik_dalvik_system_Taint_addTaintFile},
+      { "log",  "(Ljava/lang/String;)V",
+          Dalvik_dalvik_system_Taint_log},
+!     { "logPathFromFd",  "(I)V",
+          Dalvik_dalvik_system_Taint_logPathFromFd},
+      { "logPeerFromFd",  "(I)V",
+          Dalvik_dalvik_system_Taint_logPeerFromFd},
+--- 744,750 ----
+          Dalvik_dalvik_system_Taint_addTaintFile},
+      { "log",  "(Ljava/lang/String;)V",
+          Dalvik_dalvik_system_Taint_log},
+!     { "logPathFromFd",  "(II)V",
+          Dalvik_dalvik_system_Taint_logPathFromFd},
+      { "logPeerFromFd",  "(I)V",
+          Dalvik_dalvik_system_Taint_logPeerFromFd},
