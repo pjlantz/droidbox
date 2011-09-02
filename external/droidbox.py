@@ -221,7 +221,7 @@ sys.stdout.write(curses.tigetstr("clear"))
 sys.stdout.flush()
 
 print " ____                        __  ____"               
-print "/\  _`\    [\033[1;31malpha\033[1;m]    __    /\ \/\  _`\\"                  
+print "/\  _`\    [\033[1;31mbeta\033[1;m]    __    /\ \/\  _`\\"                  
 print "\ \ \/\ \  _ __  ___ /\_\   \_\ \ \ \L\ \   ___   __  _"  
 print " \ \ \ \ \/\`'__\ __`\/\ \  /'_` \ \  _ <' / __`\/\ \/'\\" 
 print "  \ \ \_\ \ \ \/\ \L\ \ \ \/\ \L\ \ \ \L\ \\ \L\ \/>  </"
@@ -234,7 +234,6 @@ actexec = ActivityThread()
 actexec.start()
 call(['../platform-tools/adb', 'logcat', '-c'])
 timeStamp = time.time()
-
 while 1:
     try:
         logcatInput = sys.stdin.readline()
@@ -604,6 +603,8 @@ class Treemap:
                 lower[axis] = upper[axis]
         except TypeError:
             pass
+        except ZeroDivisionError:
+            pass
 
     def draw_rectangle(self, lower, upper, node):
         if not isinstance(node, tuple):
@@ -695,3 +696,4 @@ F.set_size_inches( (DefaultSize[0]*0.9, DefaultSize[1]*0.9))
 Size = F.get_size_inches()
 savefig('tree.png', bbox_inches = 'tight', pad_inches = 0.2)
 print "Saved treemap graph as: \033[1;32mtree.png\033[1;m"
+sys.exit(1)
