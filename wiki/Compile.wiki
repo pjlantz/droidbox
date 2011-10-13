@@ -132,13 +132,6 @@ While booting up, issue:
 % ../platform-tools/adb shell setprop dalvik.vm.execution-mode int:portable
 }}}
 
-When emulator is booted up:
-
-{{{
-% wget http://droidbox.googlecode.com/files/TaintDroidNotify.apk
-% ../platform-tools/adb install TaintDroidNotify.apk
-}}}
-
 = Applying patch =
 
 Applying the patches on TaintDroid is done by issuing:
