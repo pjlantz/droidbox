@@ -20,13 +20,11 @@
 #
 ################################################################################
 
-# TODO: dump network traffic and file content on the captured sandbox logs
-
 import sys, json, time, curses
 import zipfile, StringIO
 from threading import Thread
 from xml.dom import minidom
-from subprocess import call
+from subprocess import call, PIPE
 from utils import AXMLPrinter
 import hashlib
 from pylab import *
@@ -37,26 +35,33 @@ from matplotlib.font_manager import FontProperties
 
 sendsms = {}
 phonecalls = {}
+cryptousage = {}
+netbuffer = {}
+
+dexclass = {}
 dataleaks = {}
 opennet = {}
 sendnet = {}
+recvnet = {}
 fdaccess = {}
-cryptousage = {}
-
+servicestart = {}
 xml = {}
+udpConn = []
 permissions = []
 activities = []
 activityaction = {}
-services = []
+enfperm = []
 packageNames = []
 recvs = []
 recvsaction = {}
+accessedfiles = {}
 
 tags = { 0x1 :   "TAINT_LOCATION",      0x2: "TAINT_CONTACTS",        0x4: "TAINT_MIC",            0x8: "TAINT_PHONE_NUMBER", 
          0x10:   "TAINT_LOCATION_GPS",  0x20: "TAINT_LOCATION_NET",   0x40: "TAINT_LOCATION_LAST", 0x80: "TAINT_CAMERA",
          0x100:  "TAINT_ACCELEROMETER", 0x200: "TAINT_SMS",           0x400: "TAINT_IMEI",         0x800: "TAINT_IMSI",
-         0x1000: "TAINT_ICCID",         0x2000: "TAINT_DEVICE_SN",    0x4000: "TAINT_ACCOUNT",     0x8000: "TAINT_HISTORY",
-         0x10000: "TAINT_OTHERDB",      0x20000: "TAINT_FILECONTENT", 0x40000: "TAINT_PACKAGE" }
+         0x1000: "TAINT_ICCID",         0x2000: "TAINT_DEVICE_SN",    0x4000: "TAINT_ACCOUNT",     0x8000: "TAINT_BROWSER",
+         0x10000: "TAINT_OTHERDB",      0x20000: "TAINT_FILECONTENT", 0x40000: "TAINT_PACKAGE",    0x80000: "TAINT_CALL_LOG",
+         0x100000: "TAINT_EMAIL",       0x200000: "TAINT_CALENDAR",   0x400000: "TAINT_SETTINGS" }
 
 class CountingThread(Thread):
     """
@@ -105,7 +110,7 @@ class CountingThread(Thread):
                 
 class ActivityThread(Thread):
     """
-    Run until all activities and services 
+    Run until the main Activity 
     within an APK have been started
     """
 
@@ -118,40 +123,27 @@ class ActivityThread(Thread):
         
     def run(self):
         """
-        Run each service and activity found in Manifest
+        Run main activity found in Manifest
         """
 
         runActivity = ''
         runPackage = ''
         for activity in activities:
-            if activity[0] == '.':
-                runActivity = activity
-                runPackage = packageNames[0]
-            else:
-                for package in packageNames:
-                    splitAct = activity.split(package)
-                    if len(splitAct) > 1:
-                        runActivity = splitAct[1]
-                        runPackage = package
-                        break
-            call(['./monkeyrunner', 'monkeyrunner.py', apkName, runPackage, runActivity])
-            time.sleep(5)
-            
-        runService = ''
-        runPackage = ''
-        for service in services:
-            if service[0] == '.':
-                runService = service
-                runPackage = packageNames[0]
-            else:
-                for package in packageNames:
-                    splitServ = service.split(package)
-                    if len(splitServ) > 1:
-                        runService = splitServ[1]
-                        runPackage = package
-                        break
-            call(['./monkeyrunner', 'monkeyrunner.py', apkName, runPackage, runService])
-            time.sleep(5)
+            if activityaction.has_key(activity) and activityaction[activity] == 'android.intent.action.MAIN':
+                if activity[0] == '.':
+                    runActivity = activity
+                    runPackage = packageNames[0]
+                else:
+                    for package in packageNames:
+                        splitAct = activity.split(package)
+                        if len(splitAct) > 1:
+                            runActivity = splitAct[1]
+                            runPackage = package
+                            break
+                
+                call(['monkeyrunner', 'scripts/monkeyrunner.py', apkName, runPackage, runActivity], stderr=PIPE)
+                
+                break
             
 def fileHash(f, block_size=2**8):
     """
@@ -171,6 +163,25 @@ def fileHash(f, block_size=2**8):
         sha1.update(data)
         sha256.update(data)
     return [md5.hexdigest(), sha1.hexdigest(), sha256.hexdigest()]
+    
+def hexToStr(hexStr):
+    """
+    Convert a string hex byte values into a byte string
+    """
+ 
+    bytes = []
+    hexStr = ''.join(hexStr.split(" "))
+    for i in range(0, len(hexStr), 2):
+        bytes.append(chr(int(hexStr[i:i+2], 16)))
+    return ''.join( bytes )
+    
+def decode(s, encodings=('ascii', 'utf8', 'latin1')):
+    for encoding in encodings:
+        try:
+            return s.decode(encoding)
+        except UnicodeDecodeError:
+            pass
+    return s.decode('ascii', 'ignore')
 
 def getTags(tagParam):
     """
@@ -189,7 +200,7 @@ except:
     if len(sys.argv) > 1:
         print "File " + sys.argv[1] + " not found"
     else:
-        print "Usage: ../platform-tools/adb logcat dalvikvm:W *:S | ./logcatfilter.py file.APK"
+        print "Usage: ./droidbox.sh filename.apk"
     sys.exit(1)
 apkName = sys.argv[1]
 raw = fd.read()
@@ -203,14 +214,14 @@ for i in zip.namelist() :
        xml[i] = minidom.parseString( AXMLPrinter( zip.read( i ) ).getBuff() )
        for item in xml[i].getElementsByTagName('manifest'):
           packageNames.append( str( item.getAttribute("package") ) )
+       for item in xml[i].getElementsByTagName('permission'):
+          enfperm.append( str( item.getAttribute("android:name") ) )
        for item in xml[i].getElementsByTagName('uses-permission'):
           permissions.append( str( item.getAttribute("android:name") ) )
        for item in xml[i].getElementsByTagName('receiver'):
           recvs.append( str( item.getAttribute("android:name") ) )
           for child in item.getElementsByTagName('action'):
               recvsaction[str( item.getAttribute("android:name") )] = (str( child.getAttribute("android:name") ))
-       for item in xml[i].getElementsByTagName('service'):
-          services.append( str( item.getAttribute("android:name") ) )
        for item in xml[i].getElementsByTagName('activity'):
           activities.append( str( item.getAttribute("android:name") ) )
           for child in item.getElementsByTagName('action'):
@@ -219,9 +230,10 @@ for i in zip.namelist() :
 curses.setupterm()
 sys.stdout.write(curses.tigetstr("clear"))
 sys.stdout.flush()
+call(['adb', 'logcat', '-c'])
 
 print " ____                        __  ____"               
-print "/\  _`\    [\033[1;31mbeta\033[1;m]    __    /\ \/\  _`\\"                  
+print "/\  _`\               __    /\ \/\  _`\\"                  
 print "\ \ \/\ \  _ __  ___ /\_\   \_\ \ \ \L\ \   ___   __  _"  
 print " \ \ \ \ \/\`'__\ __`\/\ \  /'_` \ \  _ <' / __`\/\ \/'\\" 
 print "  \ \ \_\ \ \ \/\ \L\ \ \ \/\ \L\ \ \ \L\ \\ \L\ \/>  </"
@@ -232,121 +244,125 @@ count = CountingThread()
 count.start()
 actexec = ActivityThread()
 actexec.start()
-call(['../platform-tools/adb', 'logcat', '-c'])
 timeStamp = time.time()
 while 1:
     try:
         logcatInput = sys.stdin.readline()
         if not logcatInput:
             break
-        taintlog = logcatInput.split('TaintLog:')
-        if len(taintlog) > 1:
+        boxlog = logcatInput.split('DroidBox:')
+        if len(boxlog) > 1:
             try:
-                parseKey = taintlog[1].split('{')
-                if len(parseKey) > 1:
-                    key = parseKey[1].split(':')[0].replace('\"', '').strip()
-                    # File access log
-                    if key == 'FdAccess':
-                        temp = {}
-                        operation = parseKey[2].split('operation\":')[1].split(',')[0]
-                        fd = parseKey[2].split('fd\":')[1].split(',')[0]
-                        path = parseKey[2].split('path\":')[1].split('} }')[0]
-                        temp['operation'] = operation.replace('\"', '').strip()
-                        if temp['operation'] == 'write':
-                            temp['type'] = 'file write'
+            	load = json.loads(decode(boxlog[1]))
+            	# DexClassLoader
+            	if load.has_key('DexClassLoader'):
+            	    load['DexClassLoader']['type'] = 'dexload'
+            	    dexclass[time.time() - timeStamp] = load['DexClassLoader']
+            	    count.increaseCount()
+            	# service started
+            	if load.has_key('ServiceStart'):
+            	    load['ServiceStart']['type'] = 'service'
+            	    servicestart[time.time() - timeStamp] = load['ServiceStart']
+            	    count.increaseCount()
+                # received data from net
+                if load.has_key('RecvNet'):   
+                    host = load['RecvNet']['srchost']
+                    port = load['RecvNet']['srcport']
+                    if load['RecvNet'].has_key('type') and load['RecvNet']['type'] == 'UDP':
+                        recvdata = { 'host': host, 'port': port, 'data': load['RecvNet']['data']}
+                        recvnet[time.time() - timeStamp] = recvdata
+                        count.increaseCount()
+                    else:
+                        fd = load['RecvNet']['fd']  
+                        hostport = host + ":" + port + ":" + fd 
+                        if netbuffer.has_key(hostport):
+                            if len(netbuffer[hostport]) == 0:
+                                netbuffer[hostport] = str(time.time()-timeStamp) + ":"
+                            netbuffer[hostport] =  netbuffer[hostport] + load['RecvNet']['data']
+                # fdaccess
+                if load.has_key('FdAccess'):
+                    accessedfiles[load['FdAccess']['id']] = load['FdAccess']['path']
+                # file read or write     
+                if load.has_key('FileRW'):
+                    if accessedfiles.has_key(load['FileRW']['id']) and not "/dev/pts" in accessedfiles[load['FileRW']['id']]:
+                        load['FileRW']['path'] = accessedfiles[load['FileRW']['id']]
+                        if load['FileRW']['operation'] == 'write':
+                            load['FileRW']['type'] = 'file write'
                         else:
-                            temp['type'] = 'file read'
-                        temp['fd'] = fd.replace('\"', '').strip()
-                        temp['path'] = path.replace('\"', '').strip()
-                        fdaccess[time.time()-timeStamp] = temp
+                            load['FileRW']['type'] = 'file read'
+                        fdaccess[time.time()-timeStamp] = load['FileRW']
                         count.increaseCount()
-                    # opened network connection log
-                    if key == 'OpenNet':
-                        temp = {}
-                        desthost = parseKey[2].split('desthost\":')[1].split(',')[0]
-                        temp['desthost'] = desthost.replace('\"', '').strip()
-                        destport = parseKey[2].split('destport\":')[1].split('} }')[0]
-                        temp['destport'] = destport.replace('\"', '').strip()
-                        temp['type'] = 'net open'                                                
-                        opennet[time.time()-timeStamp] = temp
+                # opened network connection log
+                if load.has_key('OpenNet'):
+                    if load['OpenNet'].has_key('type') and load['OpenNet']['type'] == 'UDP':
+                        opennet[time.time()-timeStamp] = load['OpenNet']
+                        ref = load['OpenNet']['desthost'] + load['OpenNet']['destport']
+                        if ref not in udpConn:
+                            udpConn.append(ref)
+                    else:
+                        load['OpenNet']['type'] = 'net open'                                                
+                        opennet[time.time()-timeStamp] = load['OpenNet']
+                        host = load['OpenNet']['desthost']
+                        port = load['OpenNet']['destport']
+                        fd = load['OpenNet']['fd']
+                        netbuffer[host + ":" + port + ":" + fd] = ""
+                    count.increaseCount()
+                # closed socket
+                if load.has_key('CloseNet'):
+                    host = load['CloseNet']['desthost']
+                    port = load['CloseNet']['destport']
+                    ref = host + ":" + port
+                    if ref not in udpConn:
+                        fd = load['CloseNet']['fd']
+                        try:
+                            data = netbuffer[host + ":" + port + ":" + fd]
+                        except KeyError:
+                            continue
+                        stamp = float(data.split(":")[0])
+                        buffer = data.split(":")[1]
+                        recvdata =  { 'host': host, 'port': port, 'data': buffer}
+                        recvnet[stamp] = recvdata
+                        netbuffer[host + ":" + port + ":" + fd] = ""
                         count.increaseCount()
-                    # outgoing network activity log
-                    if key == 'SendNet':
-                        temp = {}
-                        desthost = parseKey[2].split('desthost\":')[1].split(',')[0]
-                        temp['desthost'] = desthost.replace('\"', '').strip()
-                        destport = parseKey[2].split('destport\":')[1].split(',')[0]
-                        temp['destport'] = destport.replace('\"', '').strip() 
-                        data = parseKey[2].split('data\":')[1].split('} }')[0]
-                        temp['data'] = data.replace('\"', '').strip()        
-                        temp['type'] = 'net write'                                                                
-                        sendnet[time.time()-timeStamp] = temp
-                        count.increaseCount()                                          
-                    # data leak log
-                    if key == 'DataLeak':
-                        temp = {}
-                        sink = parseKey[2].split('sink\":')[1].split(',')[0]
-                        temp['sink'] = sink.replace('\"', '').strip()
-                        if temp['sink'] == 'Network':
-                            desthost = parseKey[2].split('desthost\":')[1].split(',')[0]
-                            temp['desthost'] = desthost.replace('\"', '').strip()
-                            destport = parseKey[2].split('destport\":')[1].split(',')[0]
-                            temp['destport'] = destport.replace('\"', '').strip()
-                            data = parseKey[2].split('data\":')[1].split('} }')[0]                           
-                            temp['data'] = data.split('HTTP/1.1')[0].split('\"')[1].strip()
-                        if temp['sink'] == 'File':
-                            fd = parseKey[2].split('fd\":')[1].split(',')[0]
-                            temp['fd'] = fd.replace('\"', '').strip()
-                        if temp['sink'] == 'SMS':
-                            number = parseKey[2].split('number\":')[1].split(',')[0]
-                            temp['number'] = number.replace('\"', '').strip()
-                            data = parseKey[2].split('data\":')[1].split('} }')[0]                            
-                            temp['data'] = data.split('HTTP/1.1')[0].split('\"')[1].strip()         
-                        tag = parseKey[2].split('tag\":')[1].split(',')[0]
-                        temp['type'] = 'leak'
-                        temp['tag'] = tag.replace('\"', '').strip()
-                        dataleaks[time.time()-timeStamp] = temp
-                        count.increaseCount()
-                    # sent sms log
-                    if key == 'SendSMS':
-                        temp = {}
-                        number = parseKey[2].split('number\":')[1].split(',')[0]
-                        temp['number'] = number.replace('\"', '').strip()                        
-                        message = parseKey[2].split('message\":')[1].split('} }')[0]                           
-                        temp['message'] = message.replace('\"', '').strip()
-                        temp['type'] = 'sms'
-                        sendsms[time.time()-timeStamp] = temp
-                        count.increaseCount()
-                    # phone call log
-                    if key == 'PhoneCall':
-                        temp = {}
-                        number = parseKey[2].split('number\":')[1].split('} }')[0]                           
-                        temp['number'] = number.replace('\"', '').strip()
-                        temp['type'] = 'call'
-                        phonecalls[time.time()-timeStamp] = temp
-                        count.increaseCount()
-                    # crypto api usage log
-                    if key == 'CryptoUsage':
-                        temp = {}
-                        operation = parseKey[2].split('operation\":')[1].split(',')[0]
-                        temp['operation'] = operation.replace('\"', '').strip()
-                        if temp['operation'] == 'keyalgo':
-                            key = parseKey[2].split('key\":')[1].split(', \"algorithm\"')[0]
-                            temp['key'] = key.replace('\"', '').strip()
-                            algorithm = parseKey[2].split('algorithm\":')[1].split('} }')[0]                           
-                            temp['algorithm'] = algorithm.replace('\"', '').strip()
-                        else:
-                            algorithm = parseKey[2].split('algorithm\":')[1].split(',')[0]
-                            temp['algorithm'] = algorithm.replace('\"', '').strip()
-                            data = parseKey[2].split('data\":')[1].split('} }')[0]                           
-                            temp['data'] = data.replace('\"', '').strip()
-                        temp['type'] = 'crypto'                                                                   
-                        cryptousage[time.time()-timeStamp] = temp
-                        count.increaseCount()
+                    else:
+                        ref.remove(ref)
+                # outgoing network activity log
+                if load.has_key('SendNet'):
+                    if load['SendNet'].has_key('type') and load['SendNet']['type'] == 'UDP':
+                        ref = load['SendNet']['desthost'] + load['SendNet']['destport']
+                        if ref not in udpConn:
+                            udpConn.append(ref)
+                            opennet[time.time()-timeStamp] = load['SendNet']
+                    load['SendNet']['type'] = 'net write'                                                               
+                    sendnet[time.time()-timeStamp] = load['SendNet']
+                    count.increaseCount()                                          
+                # data leak log
+                if load.has_key('DataLeak'):                   
+                    if load['DataLeak']['sink'] == 'File':
+                        if accessedfiles.has_key(load['DataLeak']['id']):
+                            load['DataLeak']['path'] = accessedfiles[load['DataLeak']['id']]          
+                    load['DataLeak']['type'] = 'leak'
+                    dataleaks[time.time()-timeStamp] = load['DataLeak']
+                    count.increaseCount()
+                # sent sms log
+                if load.has_key('SendSMS'):
+                    load['SendSMS']['type'] = 'sms'
+                    sendsms[time.time()-timeStamp] = load['SendSMS']
+                    count.increaseCount()
+                # phone call log
+                if load.has_key('PhoneCall'):
+                    load['PhoneCall']['type'] = 'call'
+                    phonecalls[time.time()-timeStamp] = load['PhoneCall']
+                    count.increaseCount()
+                # crypto api usage log
+                if load.has_key('CryptoUsage'):
+                    load['CryptoUsage']['type'] = 'crypto'                                                                   
+                    cryptousage[time.time()-timeStamp] = load['CryptoUsage']
+                    count.increaseCount()
             except ValueError:
                 pass
 
-    except KeyboardInterrupt:
+    except KeyboardInterrupt:  
         # Wait for counting thread to stop
         count.stopCounting()
         count.join()
@@ -375,7 +391,8 @@ for key in keys:
     temp = fdaccess[key]
     try:
         if temp['operation'] == 'read':
-            print "%s[\033[1;36m%s\033[1;m]\t\t%s Fd: %s" % (space3, str(key), temp['path'], temp['fd'])
+            print "%s[\033[1;36m%s\033[1;m]\t\t Path: %s" % (space3, str(key), hexToStr(temp['path']))
+            print "%s\t\t\t\t Data: %s" % (space3, hexToStr(temp['data'])) + '\n'
     except ValueError:
         pass
     except KeyError:
@@ -386,7 +403,8 @@ for key in keys:
     temp = fdaccess[key]
     try:
         if temp['operation'] == 'write':
-            print "%s[\033[1;36m%s\033[1;m]\t\t%s Fd: %s" % (space3, str(key), temp['path'], temp['fd'])
+            print "%s[\033[1;36m%s\033[1;m]\t\t Path: %s" % (space3, str(key), hexToStr(temp['path']))
+            print "%s\t\t\t\t Data: %s" % (space3, hexToStr(temp['data'])) + '\n'
     except ValueError:
         pass
     except KeyError:
@@ -411,7 +429,7 @@ for key in keys:
 if len(keys) == 0:
     print ''
 
-# TODO: Print incoming network communication
+# print network activity
 print space + "\033[1;48m[Network activity]\033[1;m\n" + space + "------------------\n"
 print space2 + "\033[1;48m[Opened connections]\033[1;m\n" + space2 + "--------------------"
 keys = opennet.keys()
@@ -431,21 +449,102 @@ for key in keys:
     temp = sendnet[key]
     try:
         print "%s[\033[1;36m%s\033[1;m]\t\t Destination: %s Port: %s" % (space3, str(key), temp['desthost'], temp['destport'])
-        print "%s\t\t\t\t Data: %s" % (space3, temp['data']) + '\n'
+        print "%s\t\t\t\t Data: %s" % (space3, hexToStr(temp['data'])) + '\n'
     except ValueError:
         pass
     except KeyError:
         pass
 if len(keys) == 0:
     print ''
-
-print space + "\033[1;48m[Intent receivers]\033[1;m\n" + space + "------------------"
+print "\n" + space2 + "\033[1;48m[Incoming traffic]\033[1;m\n" + space2 + "------------------"
+keys = recvnet.keys()
+keys.sort()
+for key in keys:
+    temp = recvnet[key]
+    try:
+        print "%s[\033[1;36m%s\033[1;m]\t\t Source: %s Port: %s" % (space3, str(key), temp['host'], temp['port'])
+        print "%s\t\t\t\t Data: %s" % (space3, hexToStr(temp['data']) + '\n')
+    except ValueError:
+        pass
+    except KeyError:
+        pass
+if len(keys) == 0:
+    print ''
+    
+# print DexClass initializations
+print space + "\033[1;48m[DexClassLoader]\033[1;m\n" + space + "-----------------"
+keys = dexclass.keys()
+keys.sort()
+for key in keys:
+    temp = dexclass[key]
+    try:
+        print "%s\033[1;36m%s\033[1;m\t\t\t Path: %s\n" % (space3, str(key), temp['path'])
+    except ValueError:
+        pass
+    except KeyError:
+        pass
+        
+# print registered broadcast receivers
+print space + "\033[1;48m[Broadcast receivers]\033[1;m\n" + space + "---------------------"
 for recv in recvsaction:
-    print "%s\033[1;36m%s\033[1;m\t\t\t Action: %s" % (space3, recv, recvsaction[recv])
+    print "%s\033[1;36m%s\033[1;m\t\t\t Action: %s\n" % (space3, recv, recvsaction[recv])
+    
+# list started services
+print space + "\033[1;48m[Started services]\033[1;m\n" + space + "------------------"
+keys = servicestart.keys()
+keys.sort()
+for key in keys:
+    temp = servicestart[key]
+    print "%s\033[1;36m%s\033[1;m\t\t\t Class: %s\n" % (space3, str(key), temp['name'])
+    
+# print enforced permissions
+print space + "\033[1;48m[Enforced permissions]\033[1;m\n" + space + "----------------------"
+for perm in enfperm:
+    print "%s\033[1;36m%s\033[1;m" % (space3, perm)
 
-# TODO: Print bypassed permissions
+# print bypassed permissions
 print "\n" + space + "\033[1;48m[Permissions bypassed]\033[1;m\n" + space + "----------------------"
 
+if len(recvnet.keys()) > 0 or len(sendnet.keys()) > 0 or len(opennet.keys()) > 0:
+    if 'android.permission.INTERNET' not in permissions:
+        print "%s\033[1;36m%s\033[1;m" % (space3, 'android.permission.INTERNET')
+if len(sendsms.keys()) > 0 and 'android.permission.SEND_SMS' not in permissions:
+    print "%s\033[1;36m%s\033[1;m" % (space3, 'android.permission.SEND_SMS')
+if len(phonecalls.keys()) > 0 and 'android.permission.CALL_PHONE' not in permissions:
+    print "%s\033[1;36m%s\033[1;m" % (space3, 'android.permission.CALL_PHONE')
+if 'android.provider.Telephony.SMS_RECEIVED' in recvsaction and 'android.permission.RECEIVE_SMS' not in permissions:
+    print "%s\033[1;36m%s\033[1;m" % (space3, 'android.permission.RECEIVE_SMS')
+    
+contacts = False
+phonestate = False
+sms = False
+book = False
+for k in dataleaks.keys():	
+
+    tagsInLeak = getTags(int(dataleaks[k]['tag'], 16))
+    
+    if 'TAINT_CONTACTS' in tagsInLeak or 'TAINT_CALL_LOG' in tagsInLeak:
+        contacts = True
+    if 'TAINT_IMEI' in tagsInLeak:
+        phonestate = True
+    if 'TAINT_IMSI' in tagsInLeak:
+        phonestate = True
+    if 'TAINT_PHONE_NUMBER' in tagsInLeak:
+        phonestate = True
+    if 'TAINT_SMS' in tagsInLeak:
+        sms = True
+    if 'TAINT_BROWSER' in tagsInLeak:
+        book = True
+
+if contacts and 'android.permission.READ_CONTACTS' not in permissions:
+    print "%s\033[1;36m%s\033[1;m" % (space3, 'android.permission.READ_CONTACTS')
+if phonestate and 'android.permission.READ_PHONE_STATE' not in permissions:
+    print "%s\033[1;36m%s\033[1;m" % (space3, 'android.permission.READ_PHONE_STATE')
+if sms and 'android.permission.READ_SMS' not in permissions:
+    print "%s\033[1;36m%s\033[1;m" % (space3, 'android.permission.READ_SMS')
+if book and 'com.android.browser.permission.READ_HISTORY_BOOKMARKS' not in permissions:
+    print "%s\033[1;36m%s\033[1;m" % (space3, 'com.android.browser.permission.READ_HISTORY_BOOKMARKS')
+    
 # Print data leaks
 keys = dataleaks.keys()
 keys.sort()
@@ -458,11 +557,13 @@ for key in keys:
             print "%s\t\t\t\t Destination: %s" % (space3, temp['desthost'])
             print "%s\t\t\t\t Port: %s" % (space3, temp['destport'])
             print "%s\t\t\t\t Tag: %s" % (space3, ', '.join(getTags(int(temp['tag'], 16))))
-            print "%s\t\t\t\t Data: %s" % (space3, temp['data'])
+            print "%s\t\t\t\t Data: %s" % (space3, hexToStr(temp['data']))
 
         if temp['sink'] == 'File':
-            print "%s\t\t\t\t File descriptor: %s" % (space3, temp['fd'])
+            print "%s\t\t\t\t Path: %s" % (space3, hexToStr(temp['path']))
+            print "%s\t\t\t\t Operation: %s" % (space3, temp['operation'])
             print "%s\t\t\t\t Tag: %s" % (space3, ', '.join(getTags(int(temp['tag'], 16))))
+            print "%s\t\t\t\t Data: %s" % (space3, hexToStr(temp['data']))
 
         if temp['sink'] == 'SMS':
             print "%s\t\t\t\t Number: %s" % (space3, temp['number'])
@@ -502,19 +603,17 @@ for key in keys:
         pass
     except KeyError:
         pass
-        
-
 
 # Generate APK behavior graph
-labels = {'begin':0, 'call':1, 'sms':2, 
-          'leak':3, 'file read':4, 'file write':5, 
-          'net open': 6, 'net read':7, 'net write':8, 
-          'crypto':9, 'end':10 }
+labels = {'begin':0, 'dexload':1, 'service': 2, 'call':3, 'sms':4, 
+          'leak':5, 'file read':6, 'file write':7, 
+          'net open': 8, 'net read':9, 'net write':10, 
+          'crypto':11, 'end':12 }
 
 result = list()
 predict = list()
-mergedLogs = dict(phonecalls.items() + sendsms.items() + dataleaks.items() + cryptousage.items() +
-                  opennet.items() + sendnet.items() + fdaccess.items())
+mergedLogs = dict(dexclass.items() + servicestart.items() + phonecalls.items() + sendsms.items() + 
+                  dataleaks.items() + cryptousage.items() + opennet.items() + sendnet.items() + fdaccess.items())
 keys = mergedLogs.keys()
 keys.sort()
 for key in keys:
@@ -524,7 +623,7 @@ for key in keys:
 
 ax = gca()
 ax.plot(result, predict, c='r', marker='o', linewidth=2)
-ax.set_yticks((0,1,2,3,4,5,6,7,8, 9, 10))
+ax.set_yticks((0,1,2,3,4,5,6,7,8, 9, 10, 11, 12))
 
 # Add y-axis labes
 ylabels = []
@@ -542,7 +641,10 @@ grid(True)
 
 xlabel('timestamp', {'fontsize': 18})
 ylabel('activity', {'fontsize': 18})
-ax.set_xlim(result[0], result[len(result)-1])
+try:
+    ax.set_xlim(result[0], result[len(result)-1])
+except:
+    sys.exit(1)
 
 # Save figure
 title(apkName)
@@ -555,11 +657,11 @@ print "\n\nSaved APK behavior graph as: \033[1;32mbehaviorgraph.png\033[1;m"
 plt.clf()
 
 
-
 # Generate treemap 
-NODE_CHILDREN = ['CALL', 'SMSSEND', 'SMSLEAK', 'FILEWRITE', 'FILEREAD', 'FILELEAK',
+NODE_CHILDREN = ['DEXLOAD', 'SERVICE', 'CALL', 'SMSSEND', 'SMSLEAK', 'FILEWRITE', 'FILEREAD', 'FILELEAK',
                  'NETOPEN', 'NETWRITE', 'NETREAD', 'NETLEAK', 'CRYPTKEY', 'CRYPTDEC', 'CRYPTENC']
-MAP_COLORS = {'CALL': "#66cdaa", 'SMSSEND': "#8fbc8f", 'SMSLEAK': '#2e8b57', 'FILEWRITE': '#ffd700',
+MAP_COLORS = {'DEXLOAD': '#008080', 'SERVICE': '#00ffff', 'CALL': "#66cdaa", 'SMSSEND': "#8fbc8f", 
+              'SMSLEAK': '#2e8b57', 'FILEWRITE': '#ffd700',
               'FILEREAD': '#eedd82', 'FILELEAK': '#daa520', 'NETOPEN': '#c80000', 'NETWRITE': '#cd5c5c', 
               'NETREAD': '#bc8f8f', 'NETLEAK': '#8b4513', 'CRYPTKEY': '#6495ed', 'CRYPTDEC': '#483d8b', 
               'CRYPTENC': '#6a5acd'}
@@ -582,6 +684,7 @@ class Treemap:
         self.size_method = size_method
         self.iter_method = iter_method
         self.color_method = color_method
+        self.tree = tree
         self.addnode(tree)
         
         # Legend box
@@ -598,9 +701,12 @@ class Treemap:
             self.treemapIter = self.treemapIter + 1
         try:
             for child in self.iter_method(node):
-                upper[axis] = lower[axis] + (width * float(size(child))) / size(node)
-                self.addnode(child, list(lower), list(upper), axis + 1)
-                lower[axis] = upper[axis]
+                if child != 0:
+                    upper[axis] = lower[axis] + (width * float(size(child))) / size(node)
+                    self.addnode(child, list(lower), list(upper), axis + 1)
+                    lower[axis] = upper[axis]
+                else:
+                    self.treemapIter = self.treemapIter + 1
         except TypeError:
             pass
         except ZeroDivisionError:
@@ -627,6 +733,14 @@ def set_color(thing, iternbr):
     return MAP_COLORS[NODE_CHILDREN[iternbr]]
 
 tree = list()
+# get started services and class loads
+dexloadservice = list()
+dexloads = len(dexclass)
+dexloadservice.append(dexloads)
+services = len(servicestart)
+dexloadservice.append(services)
+tree.append(tuple(dexloadservice))
+
 # get phone call actions
 calls = len(phonecalls)
 tree.append(calls)
@@ -661,7 +775,7 @@ tree.append(tuple(file))
 network = list()
 network.append(len(opennet))
 network.append(len(sendnet))
-network.append(0) # net read
+network.append(len(recvnet))
 count = 0
 for k,v in dataleaks.items():
     if v['sink'] == 'Network':
@@ -685,14 +799,13 @@ crypto.append(countd)
 crypto.append(counte)
 tree.append(tuple(crypto))
 tree = tuple(tree)
-
 Treemap(tree, iter, size, set_color)
 xlabel('section', {'fontsize': 18})
 ylabel('operation', {'fontsize': 18})
 title(apkName)
 F = gcf()
 DefaultSize = F.get_size_inches()
-F.set_size_inches( (DefaultSize[0]*0.9, DefaultSize[1]*0.9))
+F.set_size_inches( (DefaultSize[0]*1.5, DefaultSize[1]*1.5))
 Size = F.get_size_inches()
 savefig('tree.png', bbox_inches = 'tight', pad_inches = 0.2)
 print "Saved treemap graph as: \033[1;32mtree.png\033[1;m"
