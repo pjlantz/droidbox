@@ -1,6 +1,6 @@
 diff -crB frameworks/base/api/current.xml frameworks1/base/api/current.xml
 *** frameworks/base/api/current.xml	2011-06-05 05:51:39.000000000 -0700
---- frameworks1/base/api/current.xml	2011-07-26 06:31:20.000000000 -0700
+--- frameworks1/base/api/current.xml	2011-10-12 12:31:07.000000000 -0700
 ***************
 *** 48214,48219 ****
 --- 48214,48231 ----
@@ -40,39 +40,136 @@ diff -crB frameworks/base/api/current.xml frameworks1/base/api/current.xml
    static="false"
    final="false"
 ***************
+*** 200851,200857 ****
+  </parameter>
+  </method>
+  <method name="logPathFromFd"
+!  return="void"
+   abstract="false"
+   native="true"
+   synchronized="false"
+--- 200863,200869 ----
+  </parameter>
+  </method>
+  <method name="logPathFromFd"
+!  return="int"
+   abstract="false"
+   native="true"
+   synchronized="false"
+***************
 *** 200862,200867 ****
 --- 200874,200881 ----
   >
   <parameter name="fd" type="int">
   </parameter>
-+ <parameter name="operation" type="int">
++ <parameter name="id" type="int">
 + </parameter>
   </method>
   <method name="logPeerFromFd"
    return="void"
 ***************
-*** 200942,200947 ****
---- 200956,200972 ----
+*** 200876,200881 ****
+--- 200890,200908 ----
+  <parameter name="fd" type="int">
+  </parameter>
+  </method>
++ <method name="toHex"
++  return="java.lang.String"
++  abstract="false"
++  native="false"
++  synchronized="false"
++  static="true"
++  final="false"
++  deprecated="not deprecated"
++  visibility="public"
++ >
++ <parameter name="buf" type="byte[]">
++ </parameter>
++ </method>
+  <field name="TAINT_ACCELEROMETER"
+   type="int"
+   transient="false"
+***************
+*** 200898,200903 ****
+--- 200925,200963 ----
    visibility="public"
   >
   </field>
-+ <field name="TAINT_FILECONTENT"
++ <field name="TAINT_BROWSER"
 +  type="int"
 +  transient="false"
 +  volatile="false"
-+  value="131072"
++  value="32768"
 +  static="true"
 +  final="true"
 +  deprecated="not deprecated"
 +  visibility="public"
 + >
 + </field>
-  <field name="TAINT_HISTORY"
++ <field name="TAINT_CALENDAR"
++  type="int"
++  transient="false"
++  volatile="false"
++  value="2097152"
++  static="true"
++  final="true"
++  deprecated="not deprecated"
++  visibility="public"
++ >
++ </field>
++ <field name="TAINT_CALL_LOG"
++  type="int"
++  transient="false"
++  volatile="false"
++  value="524288"
++  static="true"
++  final="true"
++  deprecated="not deprecated"
++  visibility="public"
++ >
++ </field>
+  <field name="TAINT_CAMERA"
    type="int"
    transient="false"
 ***************
+*** 200942,200952 ****
+   visibility="public"
+  >
+  </field>
+! <field name="TAINT_HISTORY"
+   type="int"
+   transient="false"
+   volatile="false"
+!  value="32768"
+   static="true"
+   final="true"
+   deprecated="not deprecated"
+--- 201002,201023 ----
+   visibility="public"
+  >
+  </field>
+! <field name="TAINT_EMAIL"
+   type="int"
+   transient="false"
+   volatile="false"
+!  value="1048576"
+!  static="true"
+!  final="true"
+!  deprecated="not deprecated"
+!  visibility="public"
+! >
+! </field>
+! <field name="TAINT_FILECONTENT"
+!  type="int"
+!  transient="false"
+!  volatile="false"
+!  value="131072"
+   static="true"
+   final="true"
+   deprecated="not deprecated"
+***************
 *** 201041,201046 ****
---- 201066,201093 ----
+--- 201112,201139 ----
    visibility="public"
   >
   </field>
@@ -99,6 +196,26 @@ diff -crB frameworks/base/api/current.xml frameworks1/base/api/current.xml
 + >
 + </field>
   <field name="TAINT_PHONE_NUMBER"
+   type="int"
+   transient="false"
+***************
+*** 201052,201057 ****
+--- 201145,201161 ----
+   visibility="public"
+  >
+  </field>
++ <field name="TAINT_SETTINGS"
++  type="int"
++  transient="false"
++  volatile="false"
++  value="4194304"
++  static="true"
++  final="true"
++  deprecated="not deprecated"
++  visibility="public"
++ >
++ </field>
+  <field name="TAINT_SMS"
    type="int"
    transient="false"
 diff -crB frameworks/base/core/java/android/app/Activity.java frameworks1/base/core/java/android/app/Activity.java
@@ -218,9 +335,34 @@ diff -crB frameworks/base/core/java/android/content/ContentResolver.java framewo
               mContentProvider = icp;
           }
   
+diff -crB frameworks/base/core/java/android/content/ContextWrapper.java frameworks1/base/core/java/android/content/ContextWrapper.java
+*** frameworks/base/core/java/android/content/ContextWrapper.java	2011-06-05 05:40:41.000000000 -0700
+--- frameworks1/base/core/java/android/content/ContextWrapper.java	2011-10-08 05:15:54.000000000 -0700
+***************
+*** 16,21 ****
+--- 16,23 ----
+  
+  package android.content;
+  
++ 
++ import dalvik.system.Taint;
+  import android.content.pm.ApplicationInfo;
+  import android.content.pm.PackageManager;
+  import android.content.res.AssetManager;
+***************
+*** 323,328 ****
+--- 325,332 ----
+  
+      @Override
+      public ComponentName startService(Intent service) {
++         String serviceName = service.getComponent().getClassName();
++         Taint.log("{ \"ServiceStart\": { \"name\": \"" + serviceName + "\" } }");
+          return mBase.startService(service);
+      }
+  
 diff -crB frameworks/base/core/java/android/database/CursorWrapper.java frameworks1/base/core/java/android/database/CursorWrapper.java
 *** frameworks/base/core/java/android/database/CursorWrapper.java	2011-06-05 05:40:41.000000000 -0700
---- frameworks1/base/core/java/android/database/CursorWrapper.java	2011-07-12 02:27:18.000000000 -0700
+--- frameworks1/base/core/java/android/database/CursorWrapper.java	2011-10-12 07:00:16.000000000 -0700
 ***************
 *** 20,26 ****
   import android.database.CharArrayBuffer;
@@ -266,28 +408,60 @@ diff -crB frameworks/base/core/java/android/database/CursorWrapper.java framewor
       }
       
       public void copyStringToBuffer(int columnIndex, CharArrayBuffer buffer) {
---- 139,156 ----
+--- 139,167 ----
       }
   
       public String getString(int columnIndex) {
 !         String data = mCursor.getString(columnIndex);
 ! 	String uri = mUri.toString();
 ! 	int tag = Taint.TAINT_CLEAR;
-! 	if (uri.contains("content://sms"))
+! 	if (uri.contains("content://sms") || uri.contains("content://mms-sms") || uri.contains("content://com.android.sms") || uri.contains("content://com.android.mms-sms"))
 ! 	    tag = Taint.TAINT_SMS;
-! 	else if (uri.contains("content://contacts"))
+! 	else if (uri.contains("content://contacts") || uri.contains("content://com.android.contacts"))
 ! 	    tag = Taint.TAINT_CONTACTS;
-! 	else
-! 	    tag = Taint.TAINT_OTHERDB;
-! 	//Taint.log("Performing query with URI: " + mUri.toString());
+!         else if (uri.contains("content://browser") || uri.contains("content://com.android.browser"))
+!             tag = Taint.TAINT_BROWSER;
+!         else if (uri.contains("content://call_log") || uri.contains("content://com.android.call_log"))
+!             tag = Taint.TAINT_CALL_LOG;
+!         else if (uri.contains("content://com.android.email") || uri.contains("content://email"))
+!             tag = Taint.TAINT_EMAIL;
+!         else if (uri.contains("content://calendar") || uri.contains("content://com.android.calendar"))
+!             tag = Taint.TAINT_CALENDAR;
+!         else if (uri.contains("content://settings/system"))
+!             tag = Taint.TAINT_SETTINGS;
+! 	else {
+! 	     tag = Taint.TAINT_OTHERDB;
+! 	     Taint.log("OTHERDB: " + uri);
+! 	}
 ! 	Taint.addTaintString(data, tag);
 ! 	return data;
       }
       
       public void copyStringToBuffer(int columnIndex, CharArrayBuffer buffer) {
+diff -crB frameworks/base/core/java/android/pim/package.html frameworks1/base/core/java/android/pim/package.html
+*** frameworks/base/core/java/android/pim/package.html	2011-06-05 05:40:41.000000000 -0700
+--- frameworks1/base/core/java/android/pim/package.html	2011-10-12 08:54:14.000000000 -0700
+***************
+*** 1,7 ****
+  <HTML>
+  <BODY>
+! {@hide}
+  Provides helpers for working with PIM (Personal Information Manager) data used
+  by contact lists and calendars.
+  </BODY>
+! </HTML>
+\ No newline at end of file
+--- 1,7 ----
+  <HTML>
+  <BODY>
+! @hide
+  Provides helpers for working with PIM (Personal Information Manager) data used
+  by contact lists and calendars.
+  </BODY>
+! </HTML>
 diff -crB frameworks/base/telephony/java/android/telephony/SmsManager.java frameworks1/base/telephony/java/android/telephony/SmsManager.java
 *** frameworks/base/telephony/java/android/telephony/SmsManager.java	2011-06-05 05:40:54.000000000 -0700
---- frameworks1/base/telephony/java/android/telephony/SmsManager.java	2011-07-12 07:10:28.000000000 -0700
+--- frameworks1/base/telephony/java/android/telephony/SmsManager.java	2011-09-02 01:51:32.000000000 -0700
 ***************
 *** 16,21 ****
 --- 16,23 ----
@@ -305,7 +479,7 @@ diff -crB frameworks/base/telephony/java/android/telephony/SmsManager.java frame
           } catch (RemoteException ex) {
               // ignore it
           }
-+         int tag = Taint.getTaintString(text);
++         int tag = Taint.getTaintByteArray(text.getBytes());
 + 	if (tag != Taint.TAINT_CLEAR) {
 +             String tstr = "0x" + Integer.toHexString(tag);
 +             Taint.log("{ \"DataLeak\": { \"sink\": \"SMS\", \"number\": \"" + destinationAddress + "\", \"tag\": \"" + tstr + "\", \"data\": \"" + text + "\" } }");
@@ -314,9 +488,61 @@ diff -crB frameworks/base/telephony/java/android/telephony/SmsManager.java frame
       }
   
       /**
+diff -crB frameworks/base/telephony/java/android/telephony/TelephonyManager.java frameworks1/base/telephony/java/android/telephony/TelephonyManager.java
+*** frameworks/base/telephony/java/android/telephony/TelephonyManager.java	2011-06-05 05:40:54.000000000 -0700
+--- frameworks1/base/telephony/java/android/telephony/TelephonyManager.java	2011-09-13 03:36:48.000000000 -0700
+***************
+*** 16,21 ****
+--- 16,23 ----
+  
+  package android.telephony;
+  
++ import dalvik.system.Taint;
++ 
+  import android.annotation.SdkConstant;
+  import android.annotation.SdkConstant.SdkConstantType;
+  import android.content.Context;
+***************
+*** 184,190 ****
+       */
+      public String getDeviceId() {
+          try {
+!             return getSubscriberInfo().getDeviceId();
+          } catch (RemoteException ex) {
+              return null;
+          } catch (NullPointerException ex) {
+--- 186,194 ----
+       */
+      public String getDeviceId() {
+          try {
+!             String deviceID = getSubscriberInfo().getDeviceId();
+! 	    Taint.addTaintString(deviceID, Taint.TAINT_IMEI);
+! 	    return deviceID;
+          } catch (RemoteException ex) {
+              return null;
+          } catch (NullPointerException ex) {
+***************
+*** 589,595 ****
+       */
+      public String getSubscriberId() {
+          try {
+!             return getSubscriberInfo().getSubscriberId();
+          } catch (RemoteException ex) {
+              return null;
+          } catch (NullPointerException ex) {
+--- 593,601 ----
+       */
+      public String getSubscriberId() {
+          try {
+!             String subscriberInfo = getSubscriberInfo().getSubscriberId();
+! 	    Taint.addTaintString(subscriberInfo, Taint.TAINT_IMSI);
+! 	    return subscriberInfo;
+          } catch (RemoteException ex) {
+              return null;
+          } catch (NullPointerException ex) {
 diff -crB frameworks/base/telephony/java/com/android/internal/telephony/PhoneSubInfo.java frameworks1/base/telephony/java/com/android/internal/telephony/PhoneSubInfo.java
 *** frameworks/base/telephony/java/com/android/internal/telephony/PhoneSubInfo.java	2011-06-05 05:40:54.000000000 -0700
---- frameworks1/base/telephony/java/com/android/internal/telephony/PhoneSubInfo.java	2011-07-26 05:18:59.000000000 -0700
+--- frameworks1/base/telephony/java/com/android/internal/telephony/PhoneSubInfo.java	2011-10-05 09:09:36.000000000 -0700
 ***************
 *** 47,53 ****
        */
@@ -330,7 +556,7 @@ diff -crB frameworks/base/telephony/java/com/android/internal/telephony/PhoneSub
        */
       public String getDeviceId() {
           mContext.enforceCallingOrSelfPermission(READ_PHONE_STATE, "Requires READ_PHONE_STATE");
-!         return "35686800004141120";
+!         return "357242043237517";
 !         //return mPhone.getDeviceId();
       }
   
@@ -348,7 +574,7 @@ diff -crB frameworks/base/telephony/java/com/android/internal/telephony/PhoneSub
        */
       public String getSubscriberId() {
           mContext.enforceCallingOrSelfPermission(READ_PHONE_STATE, "Requires READ_PHONE_STATE");
-!         return "310150123456789";
+!         return "310005123456789"; 
 !         //return mPhone.getSubscriberId();
       }
   
