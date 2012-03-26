@@ -1,5 +1,3 @@
-#!/usr/local/bin/python
-
 ################################################################################
 # (c) 2011, The Honeynet Project
 # Author: Patrik Lantz patrik@pjlantz.com
@@ -20,7 +18,7 @@
 #
 ################################################################################
 
-import sys, json, time, curses
+import sys, json, time, curses, signal, os
 import zipfile, StringIO
 from threading import Thread
 from xml.dom import minidom
@@ -194,14 +192,30 @@ def getTags(tagParam):
             tagsFound.append(tags[tag])
     return tagsFound
 
+def interruptHandler(signum, frame):
+    """ 
+	Raise interrupt for the blocking call 'logcatInput = sys.stdin.readline()'
+	
+	"""
+    raise KeyboardInterrupt	
+
 try:
     fd = open( sys.argv[1], "rb" )
 except:
     if len(sys.argv) > 1:
         print "File " + sys.argv[1] + " not found"
     else:
-        print "Usage: ./droidbox.sh filename.apk"
+        print "Usage: ./droidbox.sh filename.apk <duration in seconds> (optional)"
     sys.exit(1)
+
+duration = 0
+if len(sys.argv) > 2 and len(sys.argv[2]) > 0:
+    try:
+        duration = int(sys.argv[2])
+    except:
+	    print "Usage: ./droidbox.sh filename.apk <duration in seconds> (optional)"
+	    sys.exit(1)
+	    
 apkName = sys.argv[1]
 raw = fd.read()
 fd.close()
@@ -245,6 +259,9 @@ count.start()
 actexec = ActivityThread()
 actexec.start()
 timeStamp = time.time()
+if duration:
+    signal.signal(signal.SIGALRM, interruptHandler)
+    signal.alarm(duration)
 while 1:
     try:
         logcatInput = sys.stdin.readline()
@@ -269,11 +286,11 @@ while 1:
                     host = load['RecvNet']['srchost']
                     port = load['RecvNet']['srcport']
                     if load['RecvNet'].has_key('type') and load['RecvNet']['type'] == 'UDP':
-                        recvdata = { 'host': host, 'port': port, 'data': load['RecvNet']['data']}
+                        recvdata = {'type': 'net read', 'host': host, 'port': port, 'data': load['RecvNet']['data']}
                         recvnet[time.time() - timeStamp] = recvdata
                         count.increaseCount()
                     else:
-                        fd = load['RecvNet']['fd']  
+                        fd = load['RecvNet']['fd']
                         hostport = host + ":" + port + ":" + fd 
                         if netbuffer.has_key(hostport):
                             if len(netbuffer[hostport]) == 0:
@@ -320,7 +337,7 @@ while 1:
                             continue
                         stamp = float(data.split(":")[0])
                         buffer = data.split(":")[1]
-                        recvdata =  { 'host': host, 'port': port, 'data': buffer}
+                        recvdata =  { 'type': 'net read', 'host': host, 'port': port, 'data': buffer}
                         recvnet[stamp] = recvdata
                         netbuffer[host + ":" + port + ":" + fd] = ""
                         count.increaseCount()
@@ -612,7 +629,7 @@ labels = {'begin':0, 'dexload':1, 'service': 2, 'call':3, 'sms':4,
 
 result = list()
 predict = list()
-mergedLogs = dict(dexclass.items() + servicestart.items() + phonecalls.items() + sendsms.items() + 
+mergedLogs = dict(dexclass.items() + servicestart.items() + phonecalls.items() + sendsms.items() + recvnet.items() +
                   dataleaks.items() + cryptousage.items() + opennet.items() + sendnet.items() + fdaccess.items())
 keys = mergedLogs.keys()
 keys.sort()
@@ -636,13 +653,13 @@ ax.set_yticklabels(ylabels)
 # Create zebra stripes on y-axis
 yTickPos,_ = plt.yticks()
 yTickPos = yTickPos[:-1]
-ax.barh(yTickPos, [max(plt.xticks()[0])] * len(yTickPos), height=(yTickPos[1]-yTickPos[0]), color=['#FFFFCC','w'], linewidth=0.0)
+ax.barh(yTickPos, [60] * len(yTickPos), height=(yTickPos[1]-yTickPos[0]), color=['#FFFFCC','w'], linewidth=0.0)
 grid(True)
 
 xlabel('timestamp', {'fontsize': 18})
 ylabel('activity', {'fontsize': 18})
 try:
-    ax.set_xlim(result[0], result[len(result)-1])
+    ax.set_xlim(0, 60)#result[len(result)-1])
 except:
     sys.exit(1)
 
@@ -688,10 +705,10 @@ class Treemap:
         self.addnode(tree)
         
         # Legend box
-        """box = self.ax.get_position()
+        box = self.ax.get_position()
         self.ax.set_position([box.x0, box.y0, box.width * 0.8, box.height])
         self.ax.legend(loc='upper center', bbox_to_anchor=(0.5, -0.05),
-                       fancybox=True, shadow=True, ncol=5)"""
+                       fancybox=True, shadow=True, ncol=5)
 
     def addnode(self, node, lower=[0,0], upper=[1,1], axis=0):
         axis = axis % 2
@@ -762,7 +779,7 @@ for k,v in fdaccess.items():
     if v['operation'] == 'read':
         countr = countr + 1
     else:
-        countw = countw = 1
+        countw = countw + 1
 file.append(countw)
 file.append(countr)
 count = 0
@@ -807,6 +824,6 @@ F = gcf()
 DefaultSize = F.get_size_inches()
 F.set_size_inches( (DefaultSize[0]*1.5, DefaultSize[1]*1.5))
 Size = F.get_size_inches()
-savefig('tree.png', bbox_inches = 'tight', pad_inches = 0.2)
+savefig('tree.png', bbox_inches = 'tight', pad_inches = 2.0)
 print "Saved treemap graph as: \033[1;32mtree.png\033[1;m"
 sys.exit(1)
