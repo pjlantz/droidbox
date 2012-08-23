@@ -52,7 +52,7 @@ There are 3 kinds of signatures:
   * Signature of methods with the same name 
   * Signature of all methods of the same class
 
-One signature each line as follows(NOTICE:You do *NOT* need to add return value):
+One signature each line as follows(NOTICE:You should *NOT* add return value):
 {{{
 # Signature of one method
 Landroid/content/ContextWrapper;->openFileInput(Ljava/lang/String;)
@@ -65,5 +65,3 @@ Landroid/content/ContentResolver;
 }}}
 
 Don't worry about inheritance of APIs. Just specify any callable API signatures in the right format. APIMonitor will deal with the inheritance relationship.
-
-
