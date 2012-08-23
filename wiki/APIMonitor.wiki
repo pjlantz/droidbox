@@ -1,5 +1,5 @@
 #summary Installation and usage of DroidBox APIMonitor
-#labels APIMonitor,Android,dalvik,Instrumentation,DynamicAnalysis,apk
+#labels Featured
 
 = Introduction =
 
@@ -65,7 +65,5 @@ Landroid/content/ContentResolver;
 }}}
 
 Don't worry about inheritance of APIs. Just specify any callable API signatures in the right format. APIMonitor will deal with the inheritance relationship.
-
-
 
 
