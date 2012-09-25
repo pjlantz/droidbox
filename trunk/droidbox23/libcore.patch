@@ -1,0 +1,995 @@
+diff --git a/dalvik/src/main/java/dalvik/system/DexClassLoader.java b/dalvik/src/main/java/dalvik/system/DexClassLoader.java
+index 729e96a..7051980 100644
+--- a/dalvik/src/main/java/dalvik/system/DexClassLoader.java
++++ b/dalvik/src/main/java/dalvik/system/DexClassLoader.java
+@@ -20,7 +20,6 @@ import java.io.File;
+ import java.io.IOException;
+ import java.net.MalformedURLException;
+ import java.net.URL;
+-import dalvik.system.Taint;
+ import java.util.zip.ZipFile;
+ 
+ /**
+@@ -86,8 +85,6 @@ public class DexClassLoader extends ClassLoader {
+         mRawDexPath = dexPath;
+         mDexOutputPath = dexOutputDir;
+         mRawLibPath = libPath;
+-        
+-        Taint.log("{ \"DexClassLoader\": { \"path\": \"" + mRawDexPath + "\" } }");
+ 
+         String[] dexPathList = mRawDexPath.split(":");
+         int length = dexPathList.length;
+diff --git a/dalvik/src/main/java/dalvik/system/Taint.java b/dalvik/src/main/java/dalvik/system/Taint.java
+index fba0e47..d1f7c27 100644
+--- a/dalvik/src/main/java/dalvik/system/Taint.java
++++ b/dalvik/src/main/java/dalvik/system/Taint.java
+@@ -22,7 +22,7 @@ package dalvik.system;
+ /**
+  * Provides a Taint interface for the Dalvik VM. This class is used for
+  * implementing Taint Source and Sink functionality.
+- *
++ * 
+  */
+ public final class Taint {
+ 
+@@ -42,15 +42,7 @@ public final class Taint {
+     public static final int TAINT_ICCID         = 0x00001000;
+     public static final int TAINT_DEVICE_SN     = 0x00002000;
+     public static final int TAINT_ACCOUNT       = 0x00004000;
+-    public static final int TAINT_BROWSER       = 0x00008000;
+-    public static final int TAINT_OTHERDB       = 0x00010000;
+-    public static final int TAINT_FILECONTENT   = 0x00020000;
+-    public static final int TAINT_PACKAGE   = 0x00040000;
+-    public static final int TAINT_CALL_LOG      = 0x00080000;
+-    public static final int TAINT_EMAIL         = 0x00100000;
+-    public static final int TAINT_CALENDAR      = 0x00200000;
+-    public static final int TAINT_SETTINGS      = 0x00400000;
+-
++    public static final int TAINT_HISTORY       = 0x00008000;
+ 
+     /**
+      * Updates the target String's taint tag.
+@@ -61,24 +53,7 @@ public final class Taint {
+      *	    tag to update (bitwise or) onto the object
+      */
+     native public static void addTaintString(String str, int tag);
+-
+-    /**
+-     * Returns Hex representation of a byte buffer
+-     * @param buf Byte buffer
+-     * @return String with hex representation
+-     */
+-    public static String toHex(byte[] buf) {
+-       StringBuffer hexString = new StringBuffer();
+-        for (int i = 0; i < buf.length; i++) {
+-            String h = Integer.toHexString(0xFF & buf[i]);
+-            while (h.length() < 2)
+-                h = "0" + h;
+-            hexString.append(h);
+-        }
+-        return  hexString.toString();
+-
+-    }
+-
++    
+     /**
+      * Updates the target Object array's taint tag.
+      *
+@@ -128,7 +103,7 @@ public final class Taint {
+      *	    tag to update (bitwise or) onto the int array
+      */
+     native public static void addTaintIntArray(int[] array, int tag);
+-
++    
+     /**
+      * Updates the target short array's taint tag.
+      *
+@@ -168,7 +143,7 @@ public final class Taint {
+      *	    tag to update (bitwise or) onto the double array
+      */
+     native public static void addTaintDoubleArray(double[] array, int tag);
+-
++    
+     /**
+      * Add taint to a primiative boolean value. Only the return value has the
+      * updated taint tag.
+@@ -180,7 +155,7 @@ public final class Taint {
+      * @return val with the added taint tag
+      */
+     native public static boolean addTaintBoolean(boolean val, int tag);
+-
++    
+     /**
+      * Add taint to a primiative char value. Only the return value has the
+      * updated taint tag.
+@@ -192,7 +167,7 @@ public final class Taint {
+      * @return val with the added taint tag
+      */
+     native public static char addTaintChar(char val, int tag);
+-
++    
+     /**
+      * Add taint to a primiative byte value. Only the return value has the
+      * updated taint tag.
+@@ -265,7 +240,7 @@ public final class Taint {
+     /**
+      * Get the current taint tag from an Object array.
+      *
+-     * @param array
++     * @param array 
+      *	    the target Object array
+      * @return the taint tag
+      */
+@@ -274,7 +249,7 @@ public final class Taint {
+     /**
+      * Get the current taint tag from a boolean array.
+      *
+-     * @param array
++     * @param array 
+      *	    the target boolean array
+      * @return the taint tag
+      */
+@@ -283,7 +258,7 @@ public final class Taint {
+     /**
+      * Get the current taint tag from a char array.
+      *
+-     * @param array
++     * @param array 
+      *	    the target char array
+      * @return the taint tag
+      */
+@@ -292,7 +267,7 @@ public final class Taint {
+     /**
+      * Get the current taint tag from a byte array.
+      *
+-     * @param array
++     * @param array 
+      *	    the target byte array
+      * @return the taint tag
+      */
+@@ -301,7 +276,7 @@ public final class Taint {
+     /**
+      * Get the current taint tag from an int array.
+      *
+-     * @param array
++     * @param array 
+      *	    the target int array
+      * @return the taint tag
+      */
+@@ -310,7 +285,7 @@ public final class Taint {
+     /**
+      * Get the current taint tag from a short array.
+      *
+-     * @param array
++     * @param array 
+      *	    the target short array
+      * @return the taint tag
+      */
+@@ -319,7 +294,7 @@ public final class Taint {
+     /**
+      * Get the current taint tag from a long array.
+      *
+-     * @param array
++     * @param array 
+      *	    the target long array
+      * @return the taint tag
+      */
+@@ -328,7 +303,7 @@ public final class Taint {
+     /**
+      * Get the current taint tag from a float array.
+      *
+-     * @param array
++     * @param array 
+      *	    the target float array
+      * @return the taint tag
+      */
+@@ -337,7 +312,7 @@ public final class Taint {
+     /**
+      * Get the current taint tag from a double array.
+      *
+-     * @param array
++     * @param array 
+      *	    the target double array
+      * @return the taint tag
+      */
+@@ -356,7 +331,7 @@ public final class Taint {
+      * Get the current taint tag from a primiative char.
+      *
+      * @param val
+-     *	    the target char
++     *	    the target char 
+      * @return the taint tag
+      */
+     native public static int getTaintChar(char val);
+@@ -365,7 +340,7 @@ public final class Taint {
+      * Get the current taint tag from a primiative byte.
+      *
+      * @param val
+-     *	    the target byte
++     *	    the target byte 
+      * @return the taint tag
+      */
+     native public static int getTaintByte(byte val);
+@@ -374,7 +349,7 @@ public final class Taint {
+      * Get the current taint tag from a primiative int.
+      *
+      * @param val
+-     *	    the target int
++     *	    the target int 
+      * @return the taint tag
+      */
+     native public static int getTaintInt(int val);
+@@ -383,7 +358,7 @@ public final class Taint {
+      * Get the current taint tag from a primiative long.
+      *
+      * @param val
+-     *	    the target long
++     *	    the target long 
+      * @return the taint tag
+      */
+     native public static int getTaintLong(long val);
+@@ -392,7 +367,7 @@ public final class Taint {
+      * Get the current taint tag from a primiative float.
+      *
+      * @param val
+-     *	    the target float
++     *	    the target float 
+      * @return the taint tag
+      */
+     native public static int getTaintFloat(float val);
+@@ -401,7 +376,7 @@ public final class Taint {
+      * Get the current taint tag from a primiative double.
+      *
+      * @param val
+-     *	    the target double
++     *	    the target double 
+      * @return the taint tag
+      */
+     native public static int getTaintDouble(double val);
+@@ -414,7 +389,7 @@ public final class Taint {
+      * @return the taint tag
+      */
+     native public static int getTaintRef(Object obj);
+-
++    
+     /**
+      * Get the taint tag from a file identified by a descriptor.
+      *
+@@ -423,7 +398,7 @@ public final class Taint {
+      * @return the taint tag
+      */
+     native public static int getTaintFile(int fd);
+-
++    
+     /**
+      * add a taint tag to a file identified by a descriptor
+      *
+@@ -450,7 +425,7 @@ public final class Taint {
+      * @param fd
+      *	    the file descriptor
+      */
+-    native public static int logPathFromFd(int fd, int id);
++    native public static void logPathFromFd(int fd);
+ 
+     /**
+      * Logging utiltity to obtain the peer IP addr for a file descriptor
+diff --git a/luni/src/main/java/java/io/FileDescriptor.java b/luni/src/main/java/java/io/FileDescriptor.java
+index 4f3793b..ef92e6c 100644
+--- a/luni/src/main/java/java/io/FileDescriptor.java
++++ b/luni/src/main/java/java/io/FileDescriptor.java
+@@ -75,8 +75,6 @@ public final class FileDescriptor {
+      */
+     public FileDescriptor() {
+         super();
+-				this.id = this.gid;
+-				this.gid++;
+     }
+ 
+     /**
+@@ -117,35 +115,12 @@ public final class FileDescriptor {
+     public boolean hasName = false;
+ 
+     /**
+-     * Hack for printing out port number
+-     * @hide
+-     */
+-    public int port = 0;
+-
+-    /**
+-     * Hack for keeping track of descriptors
+-     * @hide
+-     */
+-    public final int id;
+-    /**
+-     * Hack for keeping track of descriptors
+-     * @hide
+-     */
+-		public static int gid = 0;
+-
+-    /**
+      * hack for printing out IP address
+      * @hide
+      */
+     public String name = null;
+ 
+     /**
+-     * hack for buffering read data
+-     * @hide
+-     */
+-    public String readBuffer = "";
+-
+-    /**
+      * hack for setting file taint
+      * @hide
+      */
+diff --git a/luni/src/main/java/java/io/FileInputStream.java b/luni/src/main/java/java/io/FileInputStream.java
+index 10449e1..bb8829d 100644
+--- a/luni/src/main/java/java/io/FileInputStream.java
++++ b/luni/src/main/java/java/io/FileInputStream.java
+@@ -17,7 +17,6 @@
+ 
+ package java.io;
+ 
+-import dalvik.system.Taint;
+ import java.nio.channels.FileChannel;
+ import libcore.io.IoUtils;
+ import org.apache.harmony.luni.platform.IFileSystem;
+@@ -289,6 +288,7 @@ public class FileInputStream extends InputStream implements Closeable {
+             // BEGIN android-changed
+             // If you only support Linux, there's nothing special about stdin.
+             return (int) fileSystem.read(fd.descriptor, buffer, offset, count);
++            // END android-changed
+         }
+     }
+ 
+diff --git a/luni/src/main/java/java/security/MessageDigest.java b/luni/src/main/java/java/security/MessageDigest.java
+index 09ec02a..aac5403 100644
+--- a/luni/src/main/java/java/security/MessageDigest.java
++++ b/luni/src/main/java/java/security/MessageDigest.java
+@@ -18,7 +18,6 @@
+ package java.security;
+ 
+ import java.nio.ByteBuffer;
+-import dalvik.system.Taint;
+ import org.apache.harmony.security.fortress.Engine;
+ 
+ /**
+@@ -60,12 +59,6 @@ public abstract class MessageDigest extends MessageDigestSpi {
+     // The algorithm.
+     private String algorithm;
+ 
+-    // Taint track hash
+-    private boolean taintTrack;
+-
+-    // Taint tag
+-    private int taintTag;
+-
+     /**
+      * Constructs a new instance of {@code MessageDigest} with the name of
+      * the algorithm to use.
+@@ -75,8 +68,6 @@ public abstract class MessageDigest extends MessageDigestSpi {
+      */
+     protected MessageDigest(String algorithm) {
+         this.algorithm = algorithm;
+-        taintTrack = false;
+-        taintTag = 0;
+     }
+ 
+     /**
+@@ -138,9 +129,7 @@ public abstract class MessageDigest extends MessageDigestSpi {
+         if (p == null) {
+             throw new NoSuchProviderException(provider);
+         }
+-        MessageDigest result = getInstance(algorithm);
+-        result.provider = p;
+-        return result;
++        return getInstance(algorithm, p);
+     }
+ 
+     /**
+@@ -237,11 +226,6 @@ public abstract class MessageDigest extends MessageDigestSpi {
+         if (input == null) {
+             throw new NullPointerException();
+         }
+-        int tag = Taint.getTaintByteArray(input);
+-        if (tag != Taint.TAINT_CLEAR) {
+-            taintTag = tag;
+-            taintTrack = true;
+-        }
+         engineUpdate(input, 0, input.length);
+     }
+ 
+@@ -253,13 +237,7 @@ public abstract class MessageDigest extends MessageDigestSpi {
+      * @see #reset
+      */
+     public byte[] digest() {
+-        byte[] data = engineDigest();
+-        //begin WITH_TAINT_TRACKING
+-        if (taintTrack) {
+-            Taint.addTaintByteArray(data, taintTag);
+-        //end WITH_TAINT_TRACKING
+-        }
+-        return data;
++        return engineDigest();
+     }
+ 
+     /**
+diff --git a/luni/src/main/java/java/util/Properties.java b/luni/src/main/java/java/util/Properties.java
+index cd65304..34a8faa 100644
+--- a/luni/src/main/java/java/util/Properties.java
++++ b/luni/src/main/java/java/util/Properties.java
+@@ -86,7 +86,6 @@ public class Properties extends Hashtable<Object, Object> {
+      */
+     public Properties() {
+         super();
+-        this.setProperty("http.keepAlive", "false");
+     }
+ 
+     /**
+@@ -533,11 +532,6 @@ public class Properties extends Hashtable<Object, Object> {
+      * @return the old value mapped to the key, or {@code null}.
+      */
+     public Object setProperty(String name, String value) {
+-        if (name.equals("http.keepAlive")) {
+-            Object o = put("http.keepAlive", "true");
+-            put("http.keepAlive", "false");
+-            return o;
+-        }
+         return put(name, value);
+     }
+ 
+diff --git a/luni/src/main/java/javax/crypto/Cipher.java b/luni/src/main/java/javax/crypto/Cipher.java
+index 4255fa7..20dca98 100644
+--- a/luni/src/main/java/javax/crypto/Cipher.java
++++ b/luni/src/main/java/javax/crypto/Cipher.java
+@@ -17,7 +17,6 @@
+ 
+ package javax.crypto;
+ 
+-import dalvik.system.Taint;
+ import java.nio.ByteBuffer;
+ import java.security.AlgorithmParameters;
+ import java.security.InvalidAlgorithmParameterException;
+@@ -101,12 +100,6 @@ public class Cipher {
+     private int mode;
+ 
+     /**
+-     * Hack to access algorithm
+-     * @hide
+-     */
+-    private Key key;
+-
+-    /**
+      * The service name.
+      */
+     private static final String SERVICE = "Cipher";
+@@ -475,7 +468,6 @@ public class Cipher {
+             // to the init()
+             sec_rand = new SecureRandom();
+         }
+-        key = key;
+         init(opmode, key, sec_rand);
+     }
+ 
+@@ -516,7 +508,6 @@ public class Cipher {
+         //        FIXME InvalidKeyException
+         //        if keysize exceeds the maximum allowable keysize
+         //        (jurisdiction policy files)
+-        key = key;
+         spiImpl.engineInit(opmode, key, random);
+         mode = opmode;
+     }
+@@ -563,7 +554,6 @@ public class Cipher {
+         if (sec_rand == null) {
+             sec_rand = new SecureRandom();
+         }
+-        key = key;
+         init(opmode, key, params, sec_rand);
+     }
+ 
+@@ -614,7 +604,6 @@ public class Cipher {
+         //        FIXME InvalidAlgorithmParameterException
+         //        cryptographic strength exceed the legal limits
+         //        (jurisdiction policy files)
+-        key = key;
+         spiImpl.engineInit(opmode, key, params, random);
+         mode = opmode;
+     }
+@@ -657,7 +646,6 @@ public class Cipher {
+         if (sec_rand == null) {
+             sec_rand = new SecureRandom();
+         }
+-        key = key;
+         init(opmode, key, params, sec_rand);
+     }
+ 
+@@ -707,7 +695,6 @@ public class Cipher {
+         //        FIXME InvalidAlgorithmParameterException
+         //        cryptographic strength exceed the legal limits
+         //        (jurisdiction policy files)
+-        key = key;
+         spiImpl.engineInit(opmode, key, params, random);
+         mode = opmode;
+     }
+@@ -749,7 +736,6 @@ public class Cipher {
+         if (sec_rand == null) {
+             sec_rand = new SecureRandom();
+         }
+-        key = key;
+         init(opmode, certificate, sec_rand);
+     }
+ 
+@@ -1101,18 +1087,7 @@ public class Cipher {
+         if (mode != ENCRYPT_MODE && mode != DECRYPT_MODE) {
+             throw new IllegalStateException();
+         }
+-        byte[] out = spiImpl.engineDoFinal(input, 0, input.length);
+-        int tag = Taint.getTaintByteArray(input);
+-        if (tag != Taint.TAINT_CLEAR)
+-            Taint.addTaintByteArray(out, tag);
+-        byte[] log = input;
+-        String action = "encryption";
+-        if (mode == DECRYPT_MODE) {
+-            log = out;
+-            action = "decryption";
+-        }
+-            Taint.log("{ \"CryptoUsage\": { \"operation\": \"" + action + "\", \"algorithm\": \"" + this.getAlgorithm() + "\", \"data\": \"" + new String(log) + "\" } }");
+-        return out;
++        return spiImpl.engineDoFinal(input, 0, input.length);
+     }
+ 
+     /**
+diff --git a/luni/src/main/java/javax/crypto/spec/SecretKeySpec.java b/luni/src/main/java/javax/crypto/spec/SecretKeySpec.java
+index e080ddd..99701ff 100644
+--- a/luni/src/main/java/javax/crypto/spec/SecretKeySpec.java
++++ b/luni/src/main/java/javax/crypto/spec/SecretKeySpec.java
+@@ -21,7 +21,7 @@
+ */
+ 
+ package javax.crypto.spec;
+-import dalvik.system.Taint;
++
+ import java.io.Serializable;
+ import java.security.spec.KeySpec;
+ import java.util.Arrays;
+@@ -68,15 +68,6 @@ public class SecretKeySpec implements SecretKey, KeySpec, Serializable {
+ 
+         this.algorithm = algorithm;
+         this.key = new byte[key.length];
+-
+-        String k = "";
+-        for (int i = 0; i < key.length; i++) {
+-            k += (int) key[i]; 
+-            k += ", ";
+-            }
+-            k = k.substring(0, k.length()-2);
+-        Taint.log("{ \"CryptoUsage\": { \"operation\": \"keyalgo\", \"key\": \"" + k + "\", \"algorithm\": \"" + algorithm + "\" } }");
+-
+         System.arraycopy(key, 0, this.key, 0, key.length);
+     }
+ 
+@@ -119,16 +110,7 @@ public class SecretKeySpec implements SecretKey, KeySpec, Serializable {
+             throw new IllegalArgumentException("algorithm == null");
+         }
+         this.algorithm = algorithm;
+-
+         this.key = new byte[len];
+-        String k = "";
+-        for (int i = 0; i < key.length; i++) {
+-            k += (int) key[i]; 
+-            k += ", ";
+-            }
+-            k = k.substring(0, k.length()-2);
+-        Taint.log("{ \"CryptoUsage\": { \"operation\": \"keyalgo\", \"key\": \"" + k + "\", \"algorithm\": \"" + algorithm + "\" } }");
+-
+         System.arraycopy(key, offset, this.key, 0, len);
+     }
+ 
+@@ -140,14 +122,6 @@ public class SecretKeySpec implements SecretKey, KeySpec, Serializable {
+     public String getAlgorithm() {
+         return algorithm;
+     }
+-    
+-    /**
+-     * Hack to get key from Cipher class
+-     * @hide
+-     */
+-    public byte[] getKey() {
+-        return key;
+-    }
+ 
+     /**
+      * Returns the name of the format used to encode the key.
+diff --git a/luni/src/main/java/org/apache/harmony/luni/platform/OSFileSystem.java b/luni/src/main/java/org/apache/harmony/luni/platform/OSFileSystem.java
+index 289bcf0..79ba12b 100644
+--- a/luni/src/main/java/org/apache/harmony/luni/platform/OSFileSystem.java
++++ b/luni/src/main/java/org/apache/harmony/luni/platform/OSFileSystem.java
+@@ -110,37 +110,14 @@ class OSFileSystem implements IFileSystem {
+ 		}
+ 		// return readImpl(fileDescriptor, bytes, offset, length);
+ 		long bytesRead = readImpl(fileDescriptor, bytes, offset, length);
+-    if (bytesRead < 0) {
+-      return bytesRead;
+-    }
+-    String dstr = new String(bytes, offset, (int)bytesRead);
+-    dstr.replace("\r", " ");
+-    dstr.replace("\n", " ");
+ 		int tag = Taint.getTaintFile(fileDescriptor);
+-        if (tag != Taint.TAINT_CLEAR) {
+-            String tstr = "0x" + Integer.toHexString(tag);
+-                int x = (int) System.nanoTime();
+-                x ^= (x << 21);
+-                x ^= (x >>> 35);
+-            x ^= (x << 4);
+-                if (x < 0)
+-                    x = 0-x;
+-                int output = Taint.logPathFromFd(fileDescriptor, x);
+-                if (output == 1) {
+-                    Taint.log("{ \"DataLeak\": { \"sink\": \"File\", \"operation\": \"read\", \"tag\": \"" + tstr + "\", \"data\": \"" + Taint.toHex(dstr.getBytes()) + "\", \"id\": \"" + x + "\" } }");
+-                    Taint.addTaintByteArray(bytes, tag);
+-            }	
+-        } else {
+-                int x = (int) System.nanoTime();
+-                x ^= (x << 21);
+-                x ^= (x >>> 35);
+-            x ^= (x << 4);
+-                if (x < 0)
+-                    x = 0-x;
+-            int output = Taint.logPathFromFd(fileDescriptor, x);
+-            if (output == 1)
+-                Taint.log("{ \"FileRW\": { \"operation\": \"read\", \"data\": \"" + Taint.toHex(dstr.getBytes()) + "\", \"id\": \"" + x + "\" } }");
+-        }
++		if (tag != Taint.TAINT_CLEAR) {
++			String dstr = new String(bytes);
++			String tstr = "0x" + Integer.toHexString(tag);
++			Taint.log("OSFileSystem.read(" + fileDescriptor
++					+ "): reading with tag " + tstr + " data[" + dstr + "]");
++			Taint.addTaintByteArray(bytes, tag);
++		}
+ 		return bytesRead;
+ 	}
+ 
+@@ -151,39 +128,18 @@ class OSFileSystem implements IFileSystem {
+ 		}
+ 		// return writeImpl(fileDescriptor, bytes, offset, length);
+ 		long bytesWritten = writeImpl(fileDescriptor, bytes, offset, length);
+-    if (bytesWritten < 0) {
+-      return bytesWritten;
+-    }
+-    String dstr = new String(bytes, offset, (int)bytesWritten);
+-    dstr.replace("\r", " ");
+-    dstr.replace("\n", " ");
+ 		int tag = Taint.getTaintByteArray(bytes);
+-        if (tag != Taint.TAINT_CLEAR) {
+-                Taint.addTaintFile(fileDescriptor, tag);
+-                String tstr = "0x" + Integer.toHexString(tag);
+-                int x = (int) System.nanoTime();
+-                x ^= (x << 21);
+-                x ^= (x >>> 35);
+-            x ^= (x << 4);
+-                if (x < 0)
+-                    x = 0-x;
+-                int output = Taint.logPathFromFd(fileDescriptor, x);
+-            if (output == 1)
+-                    Taint.log("{ \"DataLeak\": { \"sink\": \"File\", \"operation\": \"write\", \"tag\": \"" + tstr + "\", \"data\": \"" + Taint.toHex(dstr.getBytes()) + "\", \"id\": \"" + x + "\" } }"); 
+-            } else {
+-                int x = (int) System.nanoTime();
+-                x ^= (x << 21);
+-                x ^= (x >>> 35);
+-            x ^= (x << 4);
+-                if (x < 0)
+-                    x = 0-x;
+-            int output = Taint.logPathFromFd(fileDescriptor, x);
+-            if (output == 1)
+-                Taint.log("{ \"FileRW\": { \"operation\": \"write\", \"data\": \"" +  Taint.toHex(dstr.getBytes())+ "\", \"id\": \"" + x + "\" } }");
+-        }
++		if (tag != Taint.TAINT_CLEAR) {
++			String dstr = new String(bytes);
++			Taint.logPathFromFd(fileDescriptor);
++			String tstr = "0x" + Integer.toHexString(tag);
++			Taint.log("OSFileSystem.write(" + fileDescriptor
++					+ "): writing with tag " + tstr + " data[" + dstr + "]");
++			Taint.addTaintFile(fileDescriptor, tag);
++		}
+ 		return bytesWritten;
+ 	}
+-
++    
+     public native long readImpl(int fd, byte[] bytes, int offset, int length) throws IOException;
+ 
+     public native long writeImpl(int fd, byte[] bytes, int offset, int length) throws IOException;
+diff --git a/luni/src/main/java/org/apache/harmony/luni/platform/OSNetworkSystem.java b/luni/src/main/java/org/apache/harmony/luni/platform/OSNetworkSystem.java
+index d0b7c51..5ee8923 100644
+--- a/luni/src/main/java/org/apache/harmony/luni/platform/OSNetworkSystem.java
++++ b/luni/src/main/java/org/apache/harmony/luni/platform/OSNetworkSystem.java
+@@ -48,12 +48,10 @@ final class OSNetworkSystem implements INetworkSystem {
+ 
+     // begin WITH_TAINT_TRACKING
+     public void connect(FileDescriptor fd, InetAddress inetAddress, int port, int timeout) throws SocketException {
+-    	String addr = inetAddress.getHostName();
++    	String addr = inetAddress.getHostAddress();
+     	if (addr != null) {
+-            fd.port = port;
+     	    fd.hasName = true;
+     	    fd.name = addr;
+-            Taint.log("{ \"OpenNet\": { \"desthost\": \"" + fd.name + "\", \"destport\": \"" + fd.port + "\", \"fd\": \"" + fd.id + "\" } }");
+     	}
+         connectImpl(fd, inetAddress, port, timeout);
+     }
+@@ -66,10 +64,8 @@ final class OSNetworkSystem implements INetworkSystem {
+     public boolean connectNonBlocking(FileDescriptor fd, InetAddress inetAddress, int port) throws IOException {
+     	String addr = inetAddress.getHostAddress();
+     	if (addr != null) {
+-            fd.port = port;
+     	    fd.hasName = true;
+     	    fd.name = addr;
+-            Taint.log("{ \"OpenNet\": { \"desthost\": \"" + fd.name + "\", \"destport\": \"" + fd.port + "\", \"fd\": \"" + fd.id + "\" } }");
+     	}
+         return connectNonBlockingImpl(fd, inetAddress, port);
+     }
+@@ -127,18 +123,13 @@ final class OSNetworkSystem implements INetworkSystem {
+     // begin WITH_TAINT_TRACKING
+     public int send(FileDescriptor fd, byte[] data, int offset, int length,
+             int port, InetAddress inetAddress) throws IOException {
+-        String dstr = new String(data, offset, length);
+-        fd.hasName = true;
+-        fd.name = inetAddress.getHostName();
+-        fd.port = port;
+     	int tag = Taint.getTaintByteArray(data);
+     	if (tag != Taint.TAINT_CLEAR) {
+-            String tstr = "0x" + Integer.toHexString(tag);
+-            dstr = dstr.replace("\n", " ");
+-            dstr = dstr.replace("\r", " ");
+-            Taint.log("{ \"DataLeak\": { \"sink\": \"Network\", \"desthost\": \"" + inetAddress.getHostName() + "\", \"destport\": \"" + port + "\", \"tag\": \"" + tstr + "\", \"data\": \"" + Taint.toHex(dstr.getBytes()) + "\" } }");
+-    	} else
+-	        Taint.log("{ \"SendNet\": { \"desthost\": \"" + inetAddress.getHostName() + "\", \"destport\": \"" + port + "\", \"data\": \"" + Taint.toHex(dstr.getBytes()) + "\", \"type\": \"UDP\" } }");
++    	    String dstr = new String(data);
++    	    String addr = (fd.hasName) ? fd.name : "unknown";
++    	    String tstr = "0x" + Integer.toHexString(tag);
++    	    Taint.log("OSNetworkSystem.send("+addr+") received data with tag " + tstr + " data=["+dstr+"]");
++    	}
+     	return sendImpl(fd, data, offset, length, port, inetAddress);
+     }
+     
+@@ -152,17 +143,14 @@ final class OSNetworkSystem implements INetworkSystem {
+ 
+ 	// begin WITH_TAINT_TRACKING
+ 	public void sendUrgentData(FileDescriptor fd, byte value) {
+-        String dstr = Byte.toString(value);
++		int tag = Taint.getTaintByte(value);
+ 		String addr = (fd.hasName) ? fd.name : "unknown";
+-        int port = (fd.hasName) ? fd.port : 0;
+-        int tag = Taint.getTaintByte(value);
+ 		if (tag != Taint.TAINT_CLEAR) {
+-	    String tstr = "0x" + Integer.toHexString(tag);
+-            dstr = dstr.replace("\n", " ");
+-            dstr = dstr.replace("\r", " ");
+-            Taint.log("{ \"DataLeak\": { \"sink\": \"Network\", \"desthost\": \"" + addr + "\", \"destport\": \"" + port + "\", \"tag\": \"" + tstr + "\", \"data\": \"" + Taint.toHex(dstr.getBytes()) + "\" } }");
+-        } else
+-                Taint.log("{ \"SendNet\": { \"desthost\": \"" + fd.name + "\", \"destport\": \"" + fd.port + "\", \"data\": \"" + Taint.toHex(dstr.getBytes()) + "\" } }");
++			String tstr = "0x" + Integer.toHexString(tag);
++			Taint.log("OSNetworkSystem.sendUrgentData(" + addr
++					+ ") received data with tag " + tstr + " value=[" + value
++					+ "]");
++		}
+ 		sendUrgentDataImpl(fd, value);
+ 	}
+ 
+@@ -183,17 +171,15 @@ final class OSNetworkSystem implements INetworkSystem {
+ 	// begin WITH_TAINT_TRACKING
+ 	public int write(FileDescriptor fd, byte[] data, int offset, int count)
+ 			throws IOException {
+-        String dstr = new String(data, offset, count);
+-        String addr = (fd.hasName) ? fd.name : "unknown";
+-        int port = (fd.hasName) ? fd.port : 0;
+ 		int tag = Taint.getTaintByteArray(data);
+ 		if (tag != Taint.TAINT_CLEAR) {
+-            String tstr = "0x" + Integer.toHexString(tag);
+-            dstr = dstr.replace("\n", " ");
+-            dstr = dstr.replace("\r", " ");
+-            Taint.log("{ \"DataLeak\": { \"sink\": \"Network\", \"desthost\": \"" + addr + "\", \"destport\": \"" + port + "\", \"tag\": \"" + tstr + "\", \"data\": \"" + Taint.toHex(dstr.getBytes()) + "\" } }");
+-		} else
+-            Taint.log("{ \"SendNet\": { \"desthost\": \"" + fd.name + "\", \"destport\": \"" + fd.port + "\", \"data\": \"" + Taint.toHex(dstr.getBytes()) + "\" } }");
++			String dstr = new String(data);
++			String addr = (fd.hasName) ? fd.name : "unknown";
++			String tstr = "0x" + Integer.toHexString(tag);
++			Taint.log("OSNetworkSystem.write(" + addr
++					+ ") received data with tag " + tstr + " data=[" + dstr
++					+ "]");
++		}
+ 		return writeImpl(fd, data, offset, count);
+ 	}
+    
+diff --git a/luni/src/main/java/org/apache/harmony/security/PrivateKeyImpl.java b/luni/src/main/java/org/apache/harmony/security/PrivateKeyImpl.java
+index d0b73e0..47aceb3 100644
+--- a/luni/src/main/java/org/apache/harmony/security/PrivateKeyImpl.java
++++ b/luni/src/main/java/org/apache/harmony/security/PrivateKeyImpl.java
+@@ -54,18 +54,6 @@ public class PrivateKeyImpl implements PrivateKey {
+         return toReturn;
+     }
+ 
+-    /**
+-     * Hack to get key from Cipher class
+-     * @hide
+-     */
+-    public byte[] getKey() {
+-
+-        byte[] toReturn = new byte[encoding.length];
+-        System.arraycopy(encoding, 0, toReturn, 0, encoding.length);
+-
+-        return toReturn;
+-    }
+-
+     public void setAlgorithm(String algorithm) {
+         this.algorithm = algorithm;
+     }
+diff --git a/luni/src/main/java/org/apache/harmony/security/PublicKeyImpl.java b/luni/src/main/java/org/apache/harmony/security/PublicKeyImpl.java
+index 67eda52..dccc72d 100644
+--- a/luni/src/main/java/org/apache/harmony/security/PublicKeyImpl.java
++++ b/luni/src/main/java/org/apache/harmony/security/PublicKeyImpl.java
+@@ -58,15 +58,6 @@ public class PublicKeyImpl implements PublicKey {
+         return result;
+     }
+ 
+-    /**
+-     * Hack to get key from Cipher class
+-     * @hide
+-     */
+-    public byte[] getKey() {
+-        byte[] result = new byte[encoding.length];
+-        System.arraycopy(encoding, 0, result, 0, encoding.length);
+-        return result;
+-    }
+ 
+     public void setAlgorithm(String algorithm) {
+         this.algorithm = algorithm;
+diff --git a/luni/src/main/java/org/apache/harmony/security/provider/crypto/DSAPrivateKeyImpl.java b/luni/src/main/java/org/apache/harmony/security/provider/crypto/DSAPrivateKeyImpl.java
+index 09aa814..ea26cf8 100644
+--- a/luni/src/main/java/org/apache/harmony/security/provider/crypto/DSAPrivateKeyImpl.java
++++ b/luni/src/main/java/org/apache/harmony/security/provider/crypto/DSAPrivateKeyImpl.java
+@@ -156,12 +156,4 @@ public class DSAPrivateKeyImpl extends PrivateKeyImpl implements DSAPrivateKey {
+     	params = new DSAParameterSpec(p, q, g);
+     }
+ 
+-    /**
+-     * Hack to get key from Cipher class
+-     * @hide
+-     */
+-    public byte[] getKey() {
+-	    return null;
+-    }
+-
+ }
+diff --git a/luni/src/main/java/org/apache/harmony/security/provider/crypto/DSAPublicKeyImpl.java b/luni/src/main/java/org/apache/harmony/security/provider/crypto/DSAPublicKeyImpl.java
+index ba94633..e4420bd 100644
+--- a/luni/src/main/java/org/apache/harmony/security/provider/crypto/DSAPublicKeyImpl.java
++++ b/luni/src/main/java/org/apache/harmony/security/provider/crypto/DSAPublicKeyImpl.java
+@@ -168,12 +168,4 @@ public class DSAPublicKeyImpl extends PublicKeyImpl implements DSAPublicKey {
+     	params = new DSAParameterSpec(p, q, g);
+     }
+ 
+-    /**
+-     * Hack to get key from Cipher class
+-     * @hide
+-     */
+-    public byte[] getKey() {
+-        return null;
+-    }
+-
+ }
+diff --git a/luni/src/main/java/org/apache/harmony/security/x509/X509PublicKey.java b/luni/src/main/java/org/apache/harmony/security/x509/X509PublicKey.java
+index d369c49..08b19d5 100644
+--- a/luni/src/main/java/org/apache/harmony/security/x509/X509PublicKey.java
++++ b/luni/src/main/java/org/apache/harmony/security/x509/X509PublicKey.java
+@@ -45,14 +45,6 @@ public class X509PublicKey implements PublicKey {
+         return encoded;
+     }
+ 
+-    /**
+-     * Hack to get key from Cipher class
+-     * @hide
+-     */
+-    public byte[] getKey() {
+-        return encoded;
+-    }
+-
+     @Override
+     public String toString() {
+         StringBuilder buf = new StringBuilder("algorithm = ");
+diff --git a/luni/src/main/native/NetFd.h b/luni/src/main/native/NetFd.h
+index ecfd173..235b057 100644
+--- a/luni/src/main/native/NetFd.h
++++ b/luni/src/main/native/NetFd.h
+@@ -39,15 +39,6 @@ public:
+     int get() const {
+         return mFd;
+     }
+-    int getPort() const {
+-        return jniGetPortFromFileDescriptor(mEnv, mFileDescriptor);
+-    }
+-    jstring getName() {
+-        return jniGetNameFromFileDescriptor(mEnv, mFileDescriptor);
+-    }
+-    int getId() const{
+-        return jniGetIdFromFileDescriptor(mEnv, mFileDescriptor);
+-    }
+ 
+ private:
+     JNIEnv* mEnv;
+diff --git a/luni/src/main/native/org_apache_harmony_luni_platform_OSNetworkSystem.cpp b/luni/src/main/native/org_apache_harmony_luni_platform_OSNetworkSystem.cpp
+index c0a9418..56859e6 100644
+--- a/luni/src/main/native/org_apache_harmony_luni_platform_OSNetworkSystem.cpp
++++ b/luni/src/main/native/org_apache_harmony_luni_platform_OSNetworkSystem.cpp
+@@ -746,27 +746,6 @@ static jint OSNetworkSystem_readDirect(JNIEnv* env, jobject, jobject fileDescrip
+             return 0;
+         }
+     } else {
+-    int port = fd.getPort();
+-    int id = fd.getId();
+-    jstring name = fd.getName();
+-		const char* srchost = env->GetStringUTFChars(name, 0);
+-    int len = strlen((char*)dst);
+-    char* hex = new char[len * 2 + 1];
+-    int i;
+-    for (i = 0; i < len; i++)
+-    {
+-        if ((char)dst[i] == '\n' || (char)dst[i] == '\r')
+-        {
+-            sprintf(&hex[2*i], "%02x", ' ');
+-            continue;
+-        }
+-        sprintf(&hex[2*i], "%02x", dst[i]);
+-    }
+-    hex[strlen((char*)dst) * 2 + 1] = '\0';
+-
+-        LOGW("DroidBox: {\"RecvNet\": { \"srchost\": \"%s\", \"srcport\": \"%d\", \"data\": \"%s\", \"fd\":\"%d\" } }", srchost, port, hex, id);
+-        delete[] hex;
+-				env->ReleaseStringUTFChars(name, srchost);
+         return bytesReceived;
+     }
+ }
+@@ -833,28 +812,6 @@ static jint OSNetworkSystem_recvDirect(JNIEnv* env, jobject, jobject fileDescrip
+             env->SetIntField(packet, gCachedFields.dpack_port, port);
+         }
+     }
+-    int port = fd.getPort();
+-    int id = fd.getId();
+-    jstring name = fd.getName();
+-		const char* srchost = env->GetStringUTFChars(name, 0);
+-    int len = strlen((char*)buf);
+-    char* hex = new char[len * 2 + 1];
+-    int i;
+-    for (i = 0; i < len; i++)
+-    {
+-        if ((char)buf[i] == '\n' || (char)buf[i] == '\r')
+-        {
+-            sprintf(&hex[2*i], "%02x", ' ');
+-            continue;
+-        }
+-        sprintf(&hex[2*i], "%02x", buf[i]);
+-    }
+-    hex[strlen((char*)buf) * 2 + 1] = '\0';
+-
+-    LOGW("DroidBox: {\"RecvNet\": { \"srchost\": \"%s\", \"srcport\": \"%d\", \"data\": \"%s\", \"fd\":\"%d\", \"type\": \"UDP\" } }", srchost, port, hex, id);
+-    delete[] hex;
+-		env->ReleaseStringUTFChars(name, srchost);
+-    
+     return bytesReceived;
+ }
+ 
+@@ -1387,15 +1344,6 @@ static void OSNetworkSystem_close(JNIEnv* env, jobject, jobject fileDescriptor)
+     int oldFd = fd.get();
+     jniSetFileDescriptorOfFD(env, fileDescriptor, -1);
+     AsynchronousSocketCloseMonitor::signalBlockedThreads(oldFd);
+-
+-    int port = fd.getPort();
+-    int id = fd.getId();
+-    jstring name = fd.getName();
+-		const char* desthost = env->GetStringUTFChars(name, 0);
+-    
+-    LOGW("DroidBox: {\"CloseNet\": { \"desthost\": \"%s\", \"destport\": \"%d\", \"fd\":\"%d\"}}", desthost, port, id);
+-		env->ReleaseStringUTFChars(name, desthost);
+-
+     close(oldFd);
+ }
+ 
