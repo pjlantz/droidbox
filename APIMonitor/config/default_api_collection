@@ -1,0 +1,94 @@
+# DEFAULT API LIST
+
+# Intent
+Landroid/content/Intent;-><init>
+Landroid/content/ContextWrapper;->sendBroadcast
+Landroid/content/ContextWrapper;->sendOrderedBroadcast
+Landroid/content/ContextWrapper;->sendStickyBroadcast
+Landroid/content/ContextWrapper;->sendStickyOrderedBroadcast
+Landroid/content/ContextWrapper;->startActivity
+Landroid/content/ContextWrapper;->startActivities
+
+# Uri
+Landroid/net/Uri;->parse(Ljava/lang/String;)
+
+# File IO
+Landroid/content/ContextWrapper;->openFileInput
+Landroid/content/ContextWrapper;->openFileOutput
+Ljava/io/FileReader;-><init>
+Ljava/io/FileWriter;-><init>
+
+# Network IO
+Ljava/net/URL;-><init>
+Ljava/net/URL;->openConnection
+Ljava/net/URL;->openStream
+
+# IO
+Ljava/io/Reader;->read
+Ljava/io/Writer;->write
+Ljava/io/BufferedReader;->read
+Ljava/io/BufferedReader;->readLine
+Ljava/io/BufferedWriter;->write
+Ljava/io/BufferedWriter;->newLine
+Ljava/io/InputStreamReader;->read
+Ljava/io/OutputStreamWriter;->write
+Ljava/io/CharArrayReader;->read
+Ljava/io/CharArrayWriter;->write
+Ljava/io/CharArrayWriter;->writeTo
+Ljava/io/FilterReader;->read
+Ljava/io/FilterWriter;->write
+Ljava/io/StringReader;->read
+Ljava/io/StringWriter;->write
+Ljava/io/PrintWriter;->append
+Ljava/io/PrintWriter;->format
+Ljava/io/PrintWriter;->print
+Ljava/io/PrintWriter;->printf
+Ljava/io/PrintWriter;->println
+Ljava/io/PrintWriter;->write
+
+# Database
+Landroid/content/ContextWrapper;->openOrCreateDatabase
+Landroid/database/sqlite/SQLiteDatabase;->openDatabase
+Landroid/database/sqlite/SQLiteDatabase;->openOrCreateDatabase
+Landroid/database/sqlite/SQLiteDatabase;->query
+Landroid/database/sqlite/SQLiteDatabase;->rawQuery
+Landroid/database/sqlite/SQLiteDatabase;->queryWithFactory
+Landroid/database/sqlite/SQLiteDatabase;->rawQueryWithFactory
+
+# All methods of ContentResolver
+Landroid/content/ContentResolver;
+#Landroid.content.ContentResolver;->query
+#Landroid.content.ContentResolver;->insert
+#Landroid.content.ContentResolver;->openInputStream
+#Landroid.content.ContentResolver;->openOutputStream
+#Landroid.content.ContentProviderClient;->query
+#Landroid.content.ContentProviderClient;->insert
+#Landroid.content.ContentProviderClient;->bulkInsert
+#Landroid.content.ContentProviderClient;->delete
+#Landroid.content.ContentProviderClient;->openAssetFile
+
+# SMS
+Landroid/telephony/SmsManager;->sendTextMessage
+Landroid/telephony/SmsManager;->sendDataMessage
+Landroid/telephony/SmsManager;->sendMultipartTextMessage
+
+# App List
+Landroid/content/pm/PackageManager;->getInstalledApplications
+
+# TelephonyManager
+Landroid/telephony/TelephonyManager;->getDeviceId
+Landroid/telephony/TelephonyManager;->getSubscriberId
+Landroid/telephony/TelephonyManager;->getCallState
+Landroid/telephony/TelephonyManager;->getCellLocation
+
+# Digest
+Ljava/security/MessageDigest;->getInstance
+Ljava/security/MessageDigest;->update
+Ljava/security/MessageDigest;->digest
+
+# Cipher
+Ljavax/crypto/Cipher;->getInstance
+Ljavax/crypto/spec/SecretKeySpec;-><init>
+Ljavax/crypto/Cipher;->init
+Ljavax/crypto/Cipher;->doFinal
+

@@ -1,0 +1,276 @@
+diff --git a/libnativehelper/JNIHelp.c b/libnativehelper/JNIHelp.c
+index 518cad8..59d457b 100644
+--- a/libnativehelper/JNIHelp.c
++++ b/libnativehelper/JNIHelp.c
+@@ -290,9 +290,6 @@ static struct CachedFields {
+     jclass fileDescriptorClass;
+     jmethodID fileDescriptorCtor;
+     jfieldID descriptorField;
+-		jfieldID nameField;
+-		jfieldID portField;
+-		jfieldID idField;
+ } gCachedFields;
+ 
+ int registerJniHelp(JNIEnv* env) {
+@@ -313,24 +310,7 @@ int registerJniHelp(JNIEnv* env) {
+     if (gCachedFields.descriptorField == NULL) {
+         return -1;
+     }
+-		
+-    gCachedFields.nameField =
+-            (*env)->GetFieldID(env, gCachedFields.fileDescriptorClass, "name", "Ljava/lang/String;");
+-    if (gCachedFields.nameField == NULL) {
+-        return -1;
+-    }
+-	
+-    gCachedFields.portField =
+-            (*env)->GetFieldID(env, gCachedFields.fileDescriptorClass, "port", "I");
+-    if (gCachedFields.portField == NULL) {
+-        return -1;
+-    }
+ 
+-    gCachedFields.idField =
+-            (*env)->GetFieldID(env, gCachedFields.fileDescriptorClass, "id", "I");
+-    if (gCachedFields.idField == NULL) {
+-        return -1;
+-    }
+     return 0;
+ }
+ 
+@@ -350,24 +330,7 @@ jobject jniCreateFileDescriptor(JNIEnv* env, int fd) {
+ int jniGetFDFromFileDescriptor(JNIEnv* env, jobject fileDescriptor) {
+     return (*env)->GetIntField(env, fileDescriptor, gCachedFields.descriptorField);
+ }
+-/*
+- * Get a string file descriptor name from a java.io.FileDescriptor
+- */
+-jstring jniGetNameFromFileDescriptor(JNIEnv* env, jobject fileDescriptor) {
+-    return (*env)->GetObjectField(env, fileDescriptor, gCachedFields.nameField);
+-}
+-/*
+- * Get an int file descriptor port from a java.io.FileDescriptor
+- */
+-int jniGetPortFromFileDescriptor(JNIEnv* env, jobject fileDescriptor) {
+-    return (*env)->GetIntField(env, fileDescriptor, gCachedFields.portField);
+-}
+-/*
+- * Get an int file descriptor id from a java.io.FileDescriptor
+- */
+-int jniGetIdFromFileDescriptor(JNIEnv* env, jobject fileDescriptor) {
+-    return (*env)->GetIntField(env, fileDescriptor, gCachedFields.idField);
+-}
++
+ /*
+  * Set the descriptor of a java.io.FileDescriptor
+  */
+diff --git a/libnativehelper/include/nativehelper/JNIHelp.h b/libnativehelper/include/nativehelper/JNIHelp.h
+index 89dbd0d..1c9f933 100644
+--- a/libnativehelper/include/nativehelper/JNIHelp.h
++++ b/libnativehelper/include/nativehelper/JNIHelp.h
+@@ -87,21 +87,6 @@ jobject jniCreateFileDescriptor(C_JNIEnv* env, int fd);
+ int jniGetFDFromFileDescriptor(C_JNIEnv* env, jobject fileDescriptor);
+ 
+ /*
+- * Get an static int file descriptor from a java.io.FileDescriptor
+- */
+-int jniGetIdFromFileDescriptor(C_JNIEnv* env, jobject fileDescriptor);
+-
+-/*
+- * Get an int file descriptor from a java.io.FileDescriptor
+- */
+-int jniGetPortFromFileDescriptor(C_JNIEnv* env, jobject fileDescriptor);
+-
+-/*
+- * Get an int file descriptor from a java.io.FileDescriptor
+- */
+-jstring jniGetNameFromFileDescriptor(C_JNIEnv* env, jobject fileDescriptor);
+-
+-/*
+  * Set an int file descriptor to a java.io.FileDescriptor
+  */
+ void jniSetFileDescriptorOfFD(C_JNIEnv* env, jobject fileDescriptor, int value);
+@@ -153,19 +138,6 @@ inline int jniGetFDFromFileDescriptor(JNIEnv* env, jobject fileDescriptor)
+ {
+     return jniGetFDFromFileDescriptor(&env->functions, fileDescriptor);
+ }
+-
+-inline jstring jniGetNameFromFileDescriptor(JNIEnv* env, jobject fileDescriptor)
+-{
+-    return jniGetNameFromFileDescriptor(&env->functions, fileDescriptor);
+-}
+-inline int jniGetIdFromFileDescriptor(JNIEnv* env, jobject fileDescriptor)
+-{
+-    return jniGetIdFromFileDescriptor(&env->functions, fileDescriptor);
+-}
+-inline int jniGetPortFromFileDescriptor(JNIEnv* env, jobject fileDescriptor)
+-{
+-    return jniGetPortFromFileDescriptor(&env->functions, fileDescriptor);
+-}
+ inline void jniSetFileDescriptorOfFD(JNIEnv* env, jobject fileDescriptor,
+     int value)
+ {
+diff --git a/vm/interp/Taint.h b/vm/interp/Taint.h
+index b1dc8c8..7621c63 100644
+--- a/vm/interp/Taint.h
++++ b/vm/interp/Taint.h
+@@ -45,15 +45,6 @@ typedef struct Taint {
+ #define TAINT_ICCID         ((u4)0x00001000) /* ICCID (SIM card identifier) */
+ #define TAINT_DEVICE_SN     ((u4)0x00002000) /* Device serial number */
+ #define TAINT_ACCOUNT       ((u4)0x00004000) /* User account information */
+-#define TAINT_BROWSER       ((u4)0x00008000) /* browser data, history or bookmarks */
+-#define TAINT_OTHERDB       ((u4)0x00010000) /* other database data */
+-#define TAINT_FILECONTENT   ((u4)0x00020000) /* file content */
+-#define TAINT_PACKAGE       ((u4)0x00040000) /* installed packages */
+-#define TAINT_CALL_LOG      ((u4)0x00080000) /* call history */
+-#define TAINT_EMAIL         ((u4)0x00100000) /* email data */
+-#define TAINT_CALENDAR      ((u4)0x00200000) /* calendar data */
+-#define TAINT_SETTINGS      ((u4)0x00400000) /* system settings */
+-
+-
++#define TAINT_HISTORY       ((u4)0x00008000) /* browser history */
+ 
+ #endif /*_DALVIK_INTERP_TAINT*/
+diff --git a/vm/native/dalvik_system_Taint.c b/vm/native/dalvik_system_Taint.c
+index f81b0c6..12f6691 100644
+--- a/vm/native/dalvik_system_Taint.c
++++ b/vm/native/dalvik_system_Taint.c
+@@ -25,8 +25,6 @@
+ #include "attr/xattr.h"
+ 
+ #include <errno.h>
+-#include <string.h>
+-#include <stdio.h>
+ 
+ #define TAINT_XATTR_NAME "user.taint"
+ 
+@@ -527,13 +525,13 @@ static u4 getTaintXattr(int fd)
+ 	if (errno == ENOATTR) {
+ 	    /* do nothing */
+ 	} else if (errno == ERANGE) {
+-	    LOGW("DroidBox: fgetxattr(%d) contents to large", fd);
++	    LOGW("TaintLog: fgetxattr(%d) contents to large", fd);
+ 	} else if (errno == ENOTSUP) {
+ 	    /* XATTRs are not supported. No need to spam the logs */
+ 	} else if (errno == EPERM) {
+ 	    /* Strange interaction with /dev/log/main. Suppress the log */
+ 	} else {
+-	    LOGW("DroidBox: fgetxattr(%d): unknown error code %d", fd, errno);
++	    LOGW("TaintLog: fgetxattr(%d): unknown error code %d", fd, errno);
+ 	}
+     }
+ 
+@@ -548,13 +546,13 @@ static void setTaintXattr(int fd, u4 tag)
+ 
+     if (ret < 0) {
+ 	if (errno == ENOSPC || errno == EDQUOT) {
+-	    LOGW("DroidBox: fsetxattr(%d): not enough room to set xattr", fd);
++	    LOGW("TaintLog: fsetxattr(%d): not enough room to set xattr", fd);
+ 	} else if (errno == ENOTSUP) {
+ 	    /* XATTRs are not supported. No need to spam the logs */
+ 	} else if (errno == EPERM) {
+ 	    /* Strange interaction with /dev/log/main. Suppress the log */
+ 	} else {
+-	    LOGW("DroidBox: fsetxattr(%d): unknown error code %d", fd, errno);
++	    LOGW("TaintLog: fsetxattr(%d): unknown error code %d", fd, errno);
+ 	}
+     }
+ 
+@@ -574,7 +572,7 @@ static void Dalvik_dalvik_system_Taint_getTaintFile(const u4* args,
+     tag = getTaintXattr(fd);
+ 
+     if (tag) {
+-	LOGI("DroidBox: getTaintFile(%d) = 0x%08x", fd, tag);
++	LOGI("TaintLog: getTaintFile(%d) = 0x%08x", fd, tag);
+     }
+ 
+     RETURN_INT(tag);
+@@ -596,7 +594,7 @@ static void Dalvik_dalvik_system_Taint_addTaintFile(const u4* args,
+     otag = getTaintXattr(fd);
+ 
+     if (tag) {
+-	LOGI("DroidBox: addTaintFile(%d): adding 0x%08x to 0x%08x = 0x%08x",
++	LOGI("TaintLog: addTaintFile(%d): adding 0x%08x to 0x%08x = 0x%08x",
+ 		fd, tag, otag, tag | otag);
+     }
+ 
+@@ -620,13 +618,13 @@ static void Dalvik_dalvik_system_Taint_log(const u4* args,
+     }
+ 
+ 	msg = dvmCreateCstrFromString(msgObj);
+-	LOGW("DroidBox: %s", msg);
++	LOGW("TaintLog: %s", msg);
+ 	char *curmsg = msg;
+-	//while(strlen(curmsg) > 1013)
+-	//{   
+-		//curmsg = curmsg+1013;
++	while(strlen(curmsg) > 1013)
++	{   
++		curmsg = curmsg+1013;
+ 		LOGW("%s", curmsg);
+-	//}   
++	}   
+ 	free(msg);
+ 
+     RETURN_VOID();
+@@ -639,33 +637,22 @@ static void Dalvik_dalvik_system_Taint_logPathFromFd(const u4* args,
+     JValue* pResult)
+ {
+     int fd = (int) args[0];
+-    int id = (int) args[1];
+     pid_t pid;
+-    char ppath[40]; // these path lengths should be enough
+-    char rpath[160];
+-    char buffer[(2*160)+1] = "";
+-    char *pbuffer = buffer;
++    char ppath[20]; // these path lengths should be enough
++    char rpath[80];
+     int err;
+-    int output = 0;
++
+ 
+     pid = getpid();
+-    snprintf(ppath, 40, "/proc/%d/fd/%d", pid, fd);
+-    err = readlink(ppath, rpath, 160);
++    snprintf(ppath, 20, "/proc/%d/fd/%d", pid, fd);
++    err = readlink(ppath, rpath, 80);
+     if (err >= 0) {
+-        if (strstr(rpath, "/dev/pts") == NULL && strstr(rpath, "/system/") == NULL && strstr(rpath, "/data/app/") == NULL && strstr(rpath, "/proc/") == NULL && strstr(rpath, "/data/local/tmp/") == NULL) {
+-            output = 1;
+-            //int len = strlen(rpath);
+-            int len = err;
+-            rpath[len] = "\0";
+-            int i;
+-            for (i = 0; i < len + 1; i++) {
+-                sprintf(pbuffer, "%x", rpath[i]);
+-                pbuffer += 2;
+-            }
+-            LOGW("DroidBox: { \"FdAccess\": { \"path\": \"%s\", \"id\": \"%d\" } }", buffer, id);
+-        }
++	LOGW("TaintLog: fd %d -> %s", fd, rpath);
++    } else {
++	LOGW("TaintLog: error finding path for fd %d", fd);
+     }
+-    RETURN_INT(output);
++
++    RETURN_VOID();
+ }
+ 
+ /*
+@@ -676,7 +663,7 @@ static void Dalvik_dalvik_system_Taint_logPeerFromFd(const u4* args,
+ {
+     int fd = (int) args[0];
+ 
+-    LOGW("DroidBox: logPeerFromFd not yet implemented");
++    LOGW("TaintLog: logPeerFromFd not yet implemented");
+ 
+     RETURN_VOID();
+ }
+@@ -758,7 +745,7 @@ const DalvikNativeMethod dvm_dalvik_system_Taint[] = {
+         Dalvik_dalvik_system_Taint_addTaintFile},
+     { "log",  "(Ljava/lang/String;)V",
+         Dalvik_dalvik_system_Taint_log},
+-    { "logPathFromFd",  "(II)I",
++    { "logPathFromFd",  "(I)V",
+         Dalvik_dalvik_system_Taint_logPathFromFd},
+     { "logPeerFromFd",  "(I)V",
+         Dalvik_dalvik_system_Taint_logPeerFromFd},

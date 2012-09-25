@@ -1,0 +1,382 @@
+diff --git a/api/current.xml b/api/current.xml
+index 9d517b9..4130ba5 100644
+--- a/api/current.xml
++++ b/api/current.xml
+@@ -230062,7 +230062,7 @@
+ </parameter>
+ </method>
+ <method name="logPathFromFd"
+- return="int"
++ return="void"
+  abstract="false"
+  native="true"
+  synchronized="false"
+@@ -230073,8 +230073,6 @@
+ >
+ <parameter name="fd" type="int">
+ </parameter>
+-<parameter name="id" type="int">
+-</parameter>
+ </method>
+ <method name="logPeerFromFd"
+  return="void"
+@@ -230089,19 +230087,6 @@
+ <parameter name="fd" type="int">
+ </parameter>
+ </method>
+-<method name="toHex"
+- return="java.lang.String"
+- abstract="false"
+- native="false"
+- synchronized="false"
+- static="true"
+- final="false"
+- deprecated="not deprecated"
+- visibility="public"
+->
+-<parameter name="buf" type="byte[]">
+-</parameter>
+-</method>
+ <field name="TAINT_ACCELEROMETER"
+  type="int"
+  transient="false"
+@@ -230124,39 +230109,6 @@
+  visibility="public"
+ >
+ </field>
+-<field name="TAINT_BROWSER"
+- type="int"
+- transient="false"
+- volatile="false"
+- value="32768"
+- static="true"
+- final="true"
+- deprecated="not deprecated"
+- visibility="public"
+->
+-</field>
+-<field name="TAINT_CALENDAR"
+- type="int"
+- transient="false"
+- volatile="false"
+- value="2097152"
+- static="true"
+- final="true"
+- deprecated="not deprecated"
+- visibility="public"
+->
+-</field>
+-<field name="TAINT_CALL_LOG"
+- type="int"
+- transient="false"
+- volatile="false"
+- value="524288"
+- static="true"
+- final="true"
+- deprecated="not deprecated"
+- visibility="public"
+->
+-</field>
+ <field name="TAINT_CAMERA"
+  type="int"
+  transient="false"
+@@ -230201,22 +230153,11 @@
+  visibility="public"
+ >
+ </field>
+-<field name="TAINT_EMAIL"
+- type="int"
+- transient="false"
+- volatile="false"
+- value="1048576"
+- static="true"
+- final="true"
+- deprecated="not deprecated"
+- visibility="public"
+->
+-</field>
+-<field name="TAINT_FILECONTENT"
++<field name="TAINT_HISTORY"
+  type="int"
+  transient="false"
+  volatile="false"
+- value="131072"
++ value="32768"
+  static="true"
+  final="true"
+  deprecated="not deprecated"
+@@ -230311,28 +230252,6 @@
+  visibility="public"
+ >
+ </field>
+-<field name="TAINT_OTHERDB"
+- type="int"
+- transient="false"
+- volatile="false"
+- value="65536"
+- static="true"
+- final="true"
+- deprecated="not deprecated"
+- visibility="public"
+->
+-</field>
+-<field name="TAINT_PACKAGE"
+- type="int"
+- transient="false"
+- volatile="false"
+- value="262144"
+- static="true"
+- final="true"
+- deprecated="not deprecated"
+- visibility="public"
+->
+-</field>
+ <field name="TAINT_PHONE_NUMBER"
+  type="int"
+  transient="false"
+@@ -230344,17 +230263,6 @@
+  visibility="public"
+ >
+ </field>
+-<field name="TAINT_SETTINGS"
+- type="int"
+- transient="false"
+- volatile="false"
+- value="4194304"
+- static="true"
+- final="true"
+- deprecated="not deprecated"
+- visibility="public"
+->
+-</field>
+ <field name="TAINT_SMS"
+  type="int"
+  transient="false"
+diff --git a/core/java/android/app/Activity.java b/core/java/android/app/Activity.java
+index cfa2d03..a54b305 100644
+--- a/core/java/android/app/Activity.java
++++ b/core/java/android/app/Activity.java
+@@ -16,7 +16,6 @@
+ 
+ package android.app;
+ 
+-import dalvik.system.Taint;
+ import com.android.internal.policy.PolicyManager;
+ 
+ import android.content.ComponentCallbacks;
+@@ -2931,11 +2930,6 @@ public class Activity extends ContextThemeWrapper
+      */
+     @Override
+     public void startActivity(Intent intent) {
+-        String action = intent.getAction();
+-        if (action != null && action.equals("android.intent.action.CALL")) {
+-            String[] number = intent.getData().toString().split("tel:");
+-            Taint.log("{ \"PhoneCall\": { \"number\": \"" + number[1] + "\" } }");
+-        }
+         startActivityForResult(intent, -1);
+     }
+ 
+diff --git a/core/java/android/app/ContextImpl.java b/core/java/android/app/ContextImpl.java
+index e324c9f..46ad64c 100644
+--- a/core/java/android/app/ContextImpl.java
++++ b/core/java/android/app/ContextImpl.java
+@@ -16,8 +16,6 @@
+ 
+ package android.app;
+ 
+-import dalvik.system.Taint;
+-
+ import com.android.internal.policy.PolicyManager;
+ import com.android.internal.util.XmlUtils;
+ import com.google.android.collect.Maps;
+@@ -2014,10 +2012,7 @@ class ContextImpl extends Context {
+         @Override
+         public List<ApplicationInfo> getInstalledApplications(int flags) {
+             try {
+-                List<ApplicationInfo> packages = mPM.getInstalledApplications(flags);
+-                for (ApplicationInfo packageInfo : packages)
+-                    Taint.addTaintString(packageInfo.packageName, Taint.TAINT_PACKAGE);
+-                return packages;
++                return mPM.getInstalledApplications(flags);
+             } catch (RemoteException e) {
+                 throw new RuntimeException("Package manager has died", e);
+             }
+diff --git a/core/java/android/content/ContentResolver.java b/core/java/android/content/ContentResolver.java
+index 1bf0104..f6edac9 100644
+--- a/core/java/android/content/ContentResolver.java
++++ b/core/java/android/content/ContentResolver.java
+@@ -274,7 +274,7 @@ public abstract class ContentResolver {
+ 	        taint = Taint.TAINT_CONTACTS;
+ 	    }
+ 	    else if(uri.toString().indexOf("browser/bookmarks") != -1) {
+-		taint = Taint.TAINT_BROWSER;
++		taint = Taint.TAINT_HISTORY;
+ 	    }
+ 	    else if(uri.toString().indexOf("content://sms") != -1) {
+ 	        taint = Taint.TAINT_SMS;
+@@ -282,24 +282,6 @@ public abstract class ContentResolver {
+ 	    else if(uri.toString().indexOf("content://mms") != -1) {
+ 	        taint = Taint.TAINT_SMS;
+ 	    }
+-        else if(uri.toString().indexOf("content://contacts") != -1) {
+-	        taint = Taint.TAINT_CONTACTS;
+-	    }
+-        else if(uri.toString().indexOf("content://browser") != -1) {
+-	        taint = Taint.TAINT_BROWSER;
+-	    }
+-        else if(uri.toString().indexOf("content://call_log") != -1) {
+-	        taint = Taint.TAINT_CALL_LOG;
+-	    }
+-        else if(uri.toString().indexOf("content://com.android.email") != -1) {
+-	        taint =  Taint.TAINT_EMAIL;;
+-	    }
+-        else if(uri.toString().indexOf("content://calendar") != -1) {
+-	        taint = Taint.TAINT_CALENDAR;
+-	    }
+-        else if(uri.toString().indexOf("content://settings/system") != -1) {
+-	        taint = Taint.TAINT_SETTINGS;
+-	    }
+ 	    // end WITH_TAINT_TRACKING
+ 
+             // force query execution
+diff --git a/core/java/android/content/ContextWrapper.java b/core/java/android/content/ContextWrapper.java
+index 6562e04..a447108 100644
+--- a/core/java/android/content/ContextWrapper.java
++++ b/core/java/android/content/ContextWrapper.java
+@@ -16,7 +16,6 @@
+ 
+ package android.content;
+ 
+-import dalvik.system.Taint;
+ import android.content.pm.ApplicationInfo;
+ import android.content.pm.PackageManager;
+ import android.content.res.AssetManager;
+@@ -334,8 +333,6 @@ public class ContextWrapper extends Context {
+ 
+     @Override
+     public ComponentName startService(Intent service) {
+-        String serviceName = service.getComponent().getClassName();
+-        Taint.log("{ \"ServiceStart\": { \"name\": \"" + serviceName + "\" } }");
+         return mBase.startService(service);
+     }
+ 
+diff --git a/core/java/android/database/CursorWrapper.java b/core/java/android/database/CursorWrapper.java
+index 56c53fd..25ababf 100644
+--- a/core/java/android/database/CursorWrapper.java
++++ b/core/java/android/database/CursorWrapper.java
+@@ -32,7 +32,7 @@ import dalvik.system.Taint;
+  */
+ 
+ public class CursorWrapper implements Cursor {
+-    
++
+     public CursorWrapper(Cursor cursor) {
+         mCursor = cursor;
+     }
+@@ -143,7 +143,8 @@ public class CursorWrapper implements Cursor {
+     }
+ 
+     public String getString(int columnIndex) {
+-        String retString = mCursor.getString(columnIndex);  
++        String retString = mCursor.getString(columnIndex);
++
+ 		// begin WITH_TAINT_TRACKING
+         if(taint_ != Taint.TAINT_CLEAR)
+         {
+diff --git a/core/java/android/pim/package.html b/core/java/android/pim/package.html
+index 702cffd..75237c9 100644
+--- a/core/java/android/pim/package.html
++++ b/core/java/android/pim/package.html
+@@ -1,6 +1,6 @@
+ <HTML>
+ <BODY>
+-@hide
++{@hide}
+ Provides helpers for working with PIM (Personal Information Manager) data used
+ by contact lists and calendars.
+ </BODY>
+diff --git a/telephony/java/android/telephony/SmsManager.java b/telephony/java/android/telephony/SmsManager.java
+index 67de099..f5e9751 100644
+--- a/telephony/java/android/telephony/SmsManager.java
++++ b/telephony/java/android/telephony/SmsManager.java
+@@ -16,8 +16,6 @@
+ 
+ package android.telephony;
+ 
+-import dalvik.system.Taint;
+-
+ import android.app.PendingIntent;
+ import android.os.RemoteException;
+ import android.os.ServiceManager;
+@@ -91,12 +89,6 @@ public final class SmsManager {
+         } catch (RemoteException ex) {
+             // ignore it
+         }
+-       int tag = Taint.getTaintByteArray(text.getBytes());
+-       if (tag != Taint.TAINT_CLEAR) {
+-            String tstr = "0x" + Integer.toHexString(tag);
+-            Taint.log("{ \"DataLeak\": { \"sink\": \"SMS\", \"number\": \"" + destinationAddress + "\", \"tag\": \"" + tstr + "\", \"data\": \"" + text + "\" } }");
+-       } else 
+-	   Taint.log("{ \"SendSMS\": { \"number\": \"" + destinationAddress + "\", \"message\": \"" + text + "\" } }"); 
+     }
+ 
+     /**
+diff --git a/telephony/java/android/telephony/TelephonyManager.java b/telephony/java/android/telephony/TelephonyManager.java
+index 5588b9a..69673b1 100644
+--- a/telephony/java/android/telephony/TelephonyManager.java
++++ b/telephony/java/android/telephony/TelephonyManager.java
+@@ -16,8 +16,6 @@
+ 
+ package android.telephony;
+ 
+-import dalvik.system.Taint;
+-
+ import android.annotation.SdkConstant;
+ import android.annotation.SdkConstant.SdkConstantType;
+ import android.content.Context;
+@@ -186,9 +184,7 @@ public class TelephonyManager {
+      */
+     public String getDeviceId() {
+         try {
+-            String deviceID = getSubscriberInfo().getDeviceId();
+-            Taint.addTaintString(deviceID, Taint.TAINT_IMEI);
+-            return deviceID;
++            return getSubscriberInfo().getDeviceId();
+         } catch (RemoteException ex) {
+             return null;
+         } catch (NullPointerException ex) {
+@@ -607,9 +603,7 @@ public class TelephonyManager {
+      */
+     public String getSubscriberId() {
+         try {
+-            String subscriberInfo = getSubscriberInfo().getSubscriberId();
+-            Taint.addTaintString(subscriberInfo, Taint.TAINT_IMSI);
+-            return subscriberInfo;
++            return getSubscriberInfo().getSubscriberId();
+         } catch (RemoteException ex) {
+             return null;
+         } catch (NullPointerException ex) {
+diff --git a/telephony/java/com/android/internal/telephony/PhoneSubInfo.java b/telephony/java/com/android/internal/telephony/PhoneSubInfo.java
+index ec3493b..a45cad1 100644
+--- a/telephony/java/com/android/internal/telephony/PhoneSubInfo.java
++++ b/telephony/java/com/android/internal/telephony/PhoneSubInfo.java
+@@ -56,8 +56,7 @@ public class PhoneSubInfo extends IPhoneSubInfo.Stub {
+      */
+     public String getDeviceId() {
+         mContext.enforceCallingOrSelfPermission(READ_PHONE_STATE, "Requires READ_PHONE_STATE");
+-        return "357242043237517";
+-        //return mPhone.getDeviceId();
++        return mPhone.getDeviceId();
+     }
+ 
+     /**
+@@ -74,8 +73,7 @@ public class PhoneSubInfo extends IPhoneSubInfo.Stub {
+      */
+     public String getSubscriberId() {
+         mContext.enforceCallingOrSelfPermission(READ_PHONE_STATE, "Requires READ_PHONE_STATE");
+-        return "310005123456789"; 
+-        //return mPhone.getSubscriberId();
++        return mPhone.getSubscriberId();
+     }
+ 
+     /**
