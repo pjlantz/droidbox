@@ -1,0 +1,2433 @@
+From 3db510592b862b31ae676d2b36390dc0802c3a37 Mon Sep 17 00:00:00 2001
+From: Peter Gilbert <petergilbert@gmail.com>
+Date: Mon, 1 Oct 2012 13:02:58 -0400
+Subject: [PATCH 01/17] initial commit of TaintDroid 4.1.1_r6
+
+---
+ api/current.txt                                    |   84 ++++++++++
+ cmds/servicemanager/Android.mk                     |    6 +
+ cmds/servicemanager/binder.c                       |   19 +++
+ core/java/android/content/ContentResolver.java     |   25 +++
+ core/java/android/database/CursorWrapper.java      |   20 ++-
+ core/java/android/hardware/Camera.java             |   32 +++-
+ .../java/android/hardware/SystemSensorManager.java |   18 +++
+ core/java/android/os/Parcel.java                   |  161 +++++++++++++++++++-
+ core/jni/Android.mk                                |    8 +
+ core/jni/android_os_Parcel.cpp                     |   28 ++++
+ media/java/android/media/AudioRecord.java          |   24 ++-
+ media/java/android/media/MediaRecorder.java        |   41 ++++-
+ media/jni/Android.mk                               |    4 +
+ media/jni/android_media_MediaRecorder.cpp          |    4 +
+ .../com/android/server/LocationManagerService.java |   28 ++++
+ .../server/location/GpsLocationProvider.java       |   34 +++++
+ .../android/internal/telephony/gsm/GSMPhone.java   |    7 +
+ .../android/internal/telephony/gsm/SIMRecords.java |   21 +++
+ 18 files changed, 549 insertions(+), 15 deletions(-)
+
+diff --git a/api/current.txt b/api/current.txt
+index bc97e81..ecf515a 100644
+--- a/api/current.txt
++++ b/api/current.txt
+@@ -7226,6 +7226,7 @@ package android.database {
+     method public boolean requery();
+     method public android.os.Bundle respond(android.os.Bundle);
+     method public void setNotificationUri(android.content.ContentResolver, android.net.Uri);
++    method public void setTaint(int);
+     method public void unregisterContentObserver(android.database.ContentObserver);
+     method public void unregisterDataSetObserver(android.database.DataSetObserver);
+   }
+@@ -29352,6 +29353,68 @@ package dalvik.system {
+     ctor public PathClassLoader(java.lang.String, java.lang.String, java.lang.ClassLoader);
+   }
+ 
++  public final class Taint {
++    ctor public Taint();
++    method public static boolean addTaintBoolean(boolean, int);
++    method public static void addTaintBooleanArray(boolean[], int);
++    method public static byte addTaintByte(byte, int);
++    method public static void addTaintByteArray(byte[], int);
++    method public static char addTaintChar(char, int);
++    method public static void addTaintCharArray(char[], int);
++    method public static double addTaintDouble(double, int);
++    method public static void addTaintDoubleArray(double[], int);
++    method public static void addTaintFile(int, int);
++    method public static float addTaintFloat(float, int);
++    method public static void addTaintFloatArray(float[], int);
++    method public static int addTaintInt(int, int);
++    method public static void addTaintIntArray(int[], int);
++    method public static long addTaintLong(long, int);
++    method public static void addTaintLongArray(long[], int);
++    method public static void addTaintObjectArray(java.lang.Object[], int);
++    method public static void addTaintShortArray(short[], int);
++    method public static void addTaintString(java.lang.String, int);
++    method public static int getTaintBoolean(boolean);
++    method public static int getTaintBooleanArray(boolean[]);
++    method public static int getTaintByte(byte);
++    method public static int getTaintByteArray(byte[]);
++    method public static int getTaintChar(char);
++    method public static int getTaintCharArray(char[]);
++    method public static int getTaintDirectByteBuffer(java.nio.ByteBuffer);
++    method public static int getTaintDouble(double);
++    method public static int getTaintDoubleArray(double[]);
++    method public static int getTaintFile(int);
++    method public static int getTaintFloat(float);
++    method public static int getTaintFloatArray(float[]);
++    method public static int getTaintInt(int);
++    method public static int getTaintIntArray(int[]);
++    method public static int getTaintLong(long);
++    method public static int getTaintLongArray(long[]);
++    method public static int getTaintObjectArray(java.lang.Object[]);
++    method public static int getTaintRef(java.lang.Object);
++    method public static int getTaintShortArray(short[]);
++    method public static int getTaintString(java.lang.String);
++    method public static void log(java.lang.String);
++    method public static void logPathFromFd(int);
++    method public static void logPeerFromFd(int);
++    field public static final int TAINT_ACCELEROMETER = 256; // 0x100
++    field public static final int TAINT_ACCOUNT = 16384; // 0x4000
++    field public static final int TAINT_CAMERA = 128; // 0x80
++    field public static final int TAINT_CLEAR = 0; // 0x0
++    field public static final int TAINT_CONTACTS = 2; // 0x2
++    field public static final int TAINT_DEVICE_SN = 8192; // 0x2000
++    field public static final int TAINT_HISTORY = 32768; // 0x8000
++    field public static final int TAINT_ICCID = 4096; // 0x1000
++    field public static final int TAINT_IMEI = 1024; // 0x400
++    field public static final int TAINT_IMSI = 2048; // 0x800
++    field public static final int TAINT_LOCATION = 1; // 0x1
++    field public static final int TAINT_LOCATION_GPS = 16; // 0x10
++    field public static final int TAINT_LOCATION_LAST = 64; // 0x40
++    field public static final int TAINT_LOCATION_NET = 32; // 0x20
++    field public static final int TAINT_MIC = 4; // 0x4
++    field public static final int TAINT_PHONE_NUMBER = 8; // 0x8
++    field public static final int TAINT_SMS = 512; // 0x200
++  }
++
+ }
+ 
+ package java.awt.font {
+@@ -30949,7 +31012,9 @@ package java.lang {
+     method public static int compare(double, double);
+     method public int compareTo(java.lang.Double);
+     method public static long doubleToLongBits(double);
++    method public static long doubleToLongBits_intrinsic(double);
+     method public static long doubleToRawLongBits(double);
++    method public static long doubleToRawLongBits_intrinsic(double);
+     method public double doubleValue();
+     method public float floatValue();
+     method public int intValue();
+@@ -30958,6 +31023,7 @@ package java.lang {
+     method public boolean isNaN();
+     method public static boolean isNaN(double);
+     method public static double longBitsToDouble(long);
++    method public static double longBitsToDouble_intrinsic(long);
+     method public long longValue();
+     method public static double parseDouble(java.lang.String) throws java.lang.NumberFormatException;
+     method public static java.lang.String toHexString(double);
+@@ -31024,9 +31090,12 @@ package java.lang {
+     method public int compareTo(java.lang.Float);
+     method public double doubleValue();
+     method public static int floatToIntBits(float);
++    method public static int floatToIntBits_intrinsic(float);
+     method public static int floatToRawIntBits(float);
++    method public static int floatToRawIntBits_intrinsic(float);
+     method public float floatValue();
+     method public static float intBitsToFloat(int);
++    method public static float intBitsToFloat_intrinsic(int);
+     method public int intValue();
+     method public boolean isInfinite();
+     method public static boolean isInfinite(float);
+@@ -31210,6 +31279,10 @@ package java.lang {
+     method public static float abs(float);
+     method public static int abs(int);
+     method public static long abs(long);
++    method public static double abs_intrinsic(double);
++    method public static float abs_intrinsic(float);
++    method public static int abs_intrinsic(int);
++    method public static long abs_intrinsic(long);
+     method public static double acos(double);
+     method public static double asin(double);
+     method public static double atan(double);
+@@ -31219,6 +31292,7 @@ package java.lang {
+     method public static double copySign(double, double);
+     method public static float copySign(float, float);
+     method public static double cos(double);
++    method public static double cos_intrinsic(double);
+     method public static double cosh(double);
+     method public static double exp(double);
+     method public static double expm1(double);
+@@ -31233,10 +31307,12 @@ package java.lang {
+     method public static float max(float, float);
+     method public static int max(int, int);
+     method public static long max(long, long);
++    method public static int max_intrinsic(int, int);
+     method public static double min(double, double);
+     method public static float min(float, float);
+     method public static int min(int, int);
+     method public static long min(long, long);
++    method public static int min_intrinsic(int, int);
+     method public static double nextAfter(double, double);
+     method public static float nextAfter(float, double);
+     method public static double nextUp(double);
+@@ -31251,8 +31327,10 @@ package java.lang {
+     method public static double signum(double);
+     method public static float signum(float);
+     method public static double sin(double);
++    method public static double sin_intrinsic(double);
+     method public static double sinh(double);
+     method public static double sqrt(double);
++    method public static double sqrt_intrinsic(double);
+     method public static double tan(double);
+     method public static double tanh(double);
+     method public static double toDegrees(double);
+@@ -31591,11 +31669,13 @@ package java.lang {
+     ctor public String(int[], int, int);
+     ctor public String(java.lang.StringBuilder);
+     method public char charAt(int);
++    method public char charAt_intrinsic(int);
+     method public int codePointAt(int);
+     method public int codePointBefore(int);
+     method public int codePointCount(int, int);
+     method public int compareTo(java.lang.String);
+     method public int compareToIgnoreCase(java.lang.String);
++    method public int compareTo_intrinsic(java.lang.String);
+     method public java.lang.String concat(java.lang.String);
+     method public boolean contains(java.lang.CharSequence);
+     method public boolean contentEquals(java.lang.StringBuffer);
+@@ -31604,6 +31684,7 @@ package java.lang {
+     method public static java.lang.String copyValueOf(char[], int, int);
+     method public boolean endsWith(java.lang.String);
+     method public boolean equalsIgnoreCase(java.lang.String);
++    method public boolean equals_intrinsic(java.lang.Object);
+     method public static java.lang.String format(java.lang.String, java.lang.Object...);
+     method public static java.lang.String format(java.util.Locale, java.lang.String, java.lang.Object...);
+     method public deprecated void getBytes(int, int, byte[], int);
+@@ -31617,11 +31698,13 @@ package java.lang {
+     method public int indexOf(java.lang.String, int);
+     method public java.lang.String intern();
+     method public boolean isEmpty();
++    method public boolean isEmpty_intrinsic();
+     method public int lastIndexOf(int);
+     method public int lastIndexOf(int, int);
+     method public int lastIndexOf(java.lang.String);
+     method public int lastIndexOf(java.lang.String, int);
+     method public int length();
++    method public int length_intrinsic();
+     method public boolean matches(java.lang.String);
+     method public int offsetByCodePoints(int, int);
+     method public boolean regionMatches(int, java.lang.String, int, int);
+@@ -33279,6 +33362,7 @@ package java.nio {
+     method public abstract byte get(int);
+     method public abstract char getChar();
+     method public abstract char getChar(int);
++    method public int getDirectByteBufferTaint();
+     method public abstract double getDouble();
+     method public abstract double getDouble(int);
+     method public abstract float getFloat();
+diff --git a/cmds/servicemanager/Android.mk b/cmds/servicemanager/Android.mk
+index 8840867..7ec500f 100644
+--- a/cmds/servicemanager/Android.mk
++++ b/cmds/servicemanager/Android.mk
+@@ -9,4 +9,10 @@ include $(CLEAR_VARS)
+ LOCAL_SHARED_LIBRARIES := liblog
+ LOCAL_SRC_FILES := service_manager.c binder.c
+ LOCAL_MODULE := servicemanager
++ifeq ($(WITH_TAINT_TRACKING),true)
++LOCAL_CFLAGS += -DWITH_TAINT_TRACKING
++endif
++ifeq ($(WITH_TAINT_BYTE_PARCEL),true)
++LOCAL_CFLAGS += -DWITH_TAINT_BYTE_PARCEL
++endif
+ include $(BUILD_EXECUTABLE)
+diff --git a/cmds/servicemanager/binder.c b/cmds/servicemanager/binder.c
+index 1985756..f28ddc4 100644
+--- a/cmds/servicemanager/binder.c
++++ b/cmds/servicemanager/binder.c
+@@ -232,6 +232,16 @@ int binder_parse(struct binder_state *bs, struct binder_io *bio,
+                 bio_init(&reply, rdata, sizeof(rdata), 4);
+                 bio_init_from_txn(&msg, txn);
+                 res = func(bs, txn, &msg, &reply);
++#ifdef WITH_TAINT_TRACKING
++                /* Only add taint tag if there is data to send */
++                if ((reply.data - reply.data0) > 0) {
++                	if (reply.data_avail >= sizeof(uint32_t)) {
++                		bio_put_uint32(&reply, 0); /* add TAINT CLEAR taint tag */
++                	} else {
++                		ALOGE("parse: no room for taint tag!\n");
++                	}
++                }
++#endif
+                 binder_send_reply(bs, &reply, txn->data, res);
+             }
+             ptr += sizeof(*txn) / sizeof(uint32_t);
+@@ -395,7 +405,16 @@ void bio_init_from_txn(struct binder_io *bio, struct binder_txn *txn)
+ {
+     bio->data = bio->data0 = txn->data;
+     bio->offs = bio->offs0 = txn->offs;
++#ifdef WITH_TAINT_TRACKING
++    /* remove taint tag if data is not null*/
++#ifdef WITH_TAINT_BYTE_PARCEL
++    bio->data_avail = txn->data_size - ((txn->data && txn->data_size >= sizeof(uint32_t)) ? sizeof(uint32_t) : 0);
++#else
++    bio->data_avail = txn->data_size - (txn->data ? sizeof(uint32_t) : 0);
++#endif /*WITH_TAINT_BYTE_PARCEL*/
++#else
+     bio->data_avail = txn->data_size;
++#endif
+     bio->offs_avail = txn->offs_size / 4;
+     bio->flags = BIO_F_SHARED;
+ }
+diff --git a/core/java/android/content/ContentResolver.java b/core/java/android/content/ContentResolver.java
+index 0a5a26a..4c473ca 100644
+--- a/core/java/android/content/ContentResolver.java
++++ b/core/java/android/content/ContentResolver.java
+@@ -53,6 +53,9 @@ import java.util.ArrayList;
+ import java.util.List;
+ import java.util.Random;
+ 
++// begin WITH_TAINT_TRACKING
++import dalvik.system.Taint;
++// end WITH_TAINT_TRACKING
+ 
+ /**
+  * This class provides applications access to the content model.
+@@ -384,6 +387,23 @@ public abstract class ContentResolver {
+             if (qCursor == null) {
+                 return null;
+             }
++
++// begin WITH_TAINT_TRACKING
++            int taint = Taint.TAINT_CLEAR;
++            if(uri.toString().indexOf("com.android.contacts") != -1) {
++                taint = Taint.TAINT_CONTACTS;
++            }
++            else if(uri.toString().indexOf("browser/bookmarks") != -1) {
++                taint = Taint.TAINT_HISTORY;
++            }
++            else if(uri.toString().indexOf("content://sms") != -1) {
++                taint = Taint.TAINT_SMS;
++            }
++            else if(uri.toString().indexOf("content://mms") != -1) {
++                taint = Taint.TAINT_SMS;
++            }
++// end WITH_TAINT_TRACKING
++
+             // force query execution
+             qCursor.getCount();
+             long durationMillis = SystemClock.uptimeMillis() - startTime;
+@@ -392,6 +412,11 @@ public abstract class ContentResolver {
+             CursorWrapperInner wrapper = new CursorWrapperInner(qCursor,
+                     stableProvider != null ? stableProvider : acquireProvider(uri));
+             stableProvider = null;
++// begin WITH_TAINT_TRACKING
++            if(taint != Taint.TAINT_CLEAR) {
++                wrapper.setTaint(taint);
++            }
++// end WITH_TAINT_TRACKING
+             return wrapper;
+         } catch (RemoteException e) {
+             // Arbitrary and not worth documenting, as Activity
+diff --git a/core/java/android/database/CursorWrapper.java b/core/java/android/database/CursorWrapper.java
+index 7baeb8c..362bae6 100644
+--- a/core/java/android/database/CursorWrapper.java
++++ b/core/java/android/database/CursorWrapper.java
+@@ -20,6 +20,10 @@ import android.content.ContentResolver;
+ import android.net.Uri;
+ import android.os.Bundle;
+ 
++// begin WITH_TAINT_TRACKING
++import dalvik.system.Taint;
++// end WITH_TAINT_TRACKING
++
+ /**
+  * Wrapper class for Cursor that delegates all calls to the actual cursor object.  The primary
+  * use for this class is to extend a cursor while overriding only a subset of its methods.
+@@ -52,7 +56,15 @@ public class CursorWrapper implements Cursor {
+     public boolean isClosed() {
+         return mCursor.isClosed();
+     }
++	
++// begin WITH_TAINT_TRACKING
++    private int taint_ = Taint.TAINT_CLEAR;
+ 
++    public void setTaint(int taint) {
++        this.taint_ = taint;
++    } 
++// end WITH_TAINT_TRACKING
++	
+     public int getCount() {
+         return mCursor.getCount();
+     }
+@@ -111,7 +123,13 @@ public class CursorWrapper implements Cursor {
+     }
+ 
+     public String getString(int columnIndex) {
+-        return mCursor.getString(columnIndex);
++        String retString = mCursor.getString(columnIndex);	
++// begin WITH_TAINT_TRACKING
++        if(taint_ != Taint.TAINT_CLEAR) {
++            Taint.addTaintString(retString, taint_);
++        }
++// end WITH_TAINT_TRACKING
++        return retString;
+     }
+     
+     public void copyStringToBuffer(int columnIndex, CharArrayBuffer buffer) {
+diff --git a/core/java/android/hardware/Camera.java b/core/java/android/hardware/Camera.java
+index 4d9077f..a8cfc25 100644
+--- a/core/java/android/hardware/Camera.java
++++ b/core/java/android/hardware/Camera.java
+@@ -37,6 +37,10 @@ import java.util.List;
+ import java.util.StringTokenizer;
+ import java.util.concurrent.locks.ReentrantLock;
+ 
++// begin WITH_TAINT_TRACKING
++import dalvik.system.Taint;
++// end WITH_TAINT_TRACKING
++
+ /**
+  * The Camera class is used to set image capture settings, start/stop preview,
+  * snap pictures, and retrieve frames for encoding for video.  This class is a
+@@ -725,13 +729,23 @@ public class Camera {
+ 
+             case CAMERA_MSG_RAW_IMAGE:
+                 if (mRawImageCallback != null) {
+-                    mRawImageCallback.onPictureTaken((byte[])msg.obj, mCamera);
++// begin WITH_TAINT_TRACKING
++                    //mRawImageCallback.onPictureTaken((byte[])msg.obj, mCamera);
++                    byte[] data = (byte[])msg.obj;
++                    Taint.addTaintByteArray(data, Taint.TAINT_CAMERA);
++                    mRawImageCallback.onPictureTaken(data, mCamera);
++// end WITH_TAINT_TRACKING
+                 }
+                 return;
+ 
+             case CAMERA_MSG_COMPRESSED_IMAGE:
+                 if (mJpegCallback != null) {
+-                    mJpegCallback.onPictureTaken((byte[])msg.obj, mCamera);
++// begin WITH_TAINT_TRACKING
++                    //mJpegCallback.onPictureTaken((byte[])msg.obj, mCamera);
++                    byte[] data = (byte[])msg.obj;
++                    Taint.addTaintByteArray(data, Taint.TAINT_CAMERA);
++                    mJpegCallback.onPictureTaken(data, mCamera);
++// end WITH_TAINT_TRACKING
+                 }
+                 return;
+ 
+@@ -749,13 +763,23 @@ public class Camera {
+                         // Set to oneshot mode again.
+                         setHasPreviewCallback(true, false);
+                     }
+-                    pCb.onPreviewFrame((byte[])msg.obj, mCamera);
++// begin WITH_TAINT_TRACKING
++                    //pCb.onPreviewFrame((byte[])msg.obj, mCamera);
++                    byte[] data = (byte[])msg.obj;
++                    Taint.addTaintByteArray(data, Taint.TAINT_CAMERA);
++                    pCb.onPreviewFrame(data, mCamera);
++// end WITH_TAINT_TRACKING
+                 }
+                 return;
+ 
+             case CAMERA_MSG_POSTVIEW_FRAME:
+                 if (mPostviewCallback != null) {
+-                    mPostviewCallback.onPictureTaken((byte[])msg.obj, mCamera);
++// begin WITH_TAINT_TRACKING
++                    //mPostviewCallback.onPictureTaken((byte[])msg.obj, mCamera);
++                    byte[] data = (byte[])msg.obj;
++                    Taint.addTaintByteArray(data, Taint.TAINT_CAMERA);
++                    mPostviewCallback.onPictureTaken(data, mCamera);
++// end WITH_TAINT_TRACKING
+                 }
+                 return;
+ 
+diff --git a/core/java/android/hardware/SystemSensorManager.java b/core/java/android/hardware/SystemSensorManager.java
+index 0204e94..ee3e850 100644
+--- a/core/java/android/hardware/SystemSensorManager.java
++++ b/core/java/android/hardware/SystemSensorManager.java
+@@ -28,6 +28,10 @@ import android.util.SparseIntArray;
+ import java.util.ArrayList;
+ import java.util.List;
+ 
++// begin WITH_TAINT_TRACKING
++import dalvik.system.Taint;
++// end WITH_TAINT_TRACKING
++
+ /**
+  * Sensor manager implementation that communicates with the built-in
+  * system sensors.
+@@ -138,6 +142,20 @@ public class SystemSensorManager extends SensorManager {
+                         }
+                         final Sensor sensorObject = sHandleToSensor.get(sensor);
+                         if (sensorObject != null) {
++// begin WITH_TAINT_TRACKING
++                            int tag = Taint.TAINT_CLEAR;
++                            if (sensorObject.getType() == Sensor.TYPE_ACCELEROMETER) {
++                                tag = Taint.TAINT_ACCELEROMETER;
++                            }
++
++                            // only taint actual data for now
++                            if (tag != Taint.TAINT_CLEAR) {
++                                Taint.addTaintFloatArray(values, tag);
++                                //Taint.addTaintLongArray(timestamp, tag);
++                                //accuracy = Taint.addTaintInt(accuracy, tag);
++                            }
++// end WITH_TAINT_TRACKING
++
+                             // report the sensor event to all listeners that
+                             // care about it.
+                             final int size = sListeners.size();
+diff --git a/core/java/android/os/Parcel.java b/core/java/android/os/Parcel.java
+index 788ab74..8484b2b 100644
+--- a/core/java/android/os/Parcel.java
++++ b/core/java/android/os/Parcel.java
+@@ -37,6 +37,10 @@ import java.util.List;
+ import java.util.Map;
+ import java.util.Set;
+ 
++// WITH_TAINT_TRACKING
++import dalvik.system.Taint;
++// end WITH_TAINT_TRACKING
++
+ /**
+  * Container for a message (data and object references) that can
+  * be sent through an IBinder.  A Parcel can contain both flattened data
+@@ -414,7 +418,17 @@ public final class Parcel {
+      * in different versions of the platform.
+      */
+     public final byte[] marshall() {
+-        return nativeMarshall(mNativePtr);
++// begin WITH_TAINT_TRACKING
++        byte[] data = nativeMarshall(mNativePtr);
++// begin WITH_TAINT_BYTE_PARCEL
++        //int tag = getTaint();
++        int tag = getTaint(0, dataSize());
++// end WITH_TAINT_BYTE_PARCEL
++        Taint.addTaintByteArray(data, tag);
++        //String tstr = "0x" + Integer.toHexString(tag);
++        //if (tag != 0) Log.w("ParcelJava", "marshall() tag = " + tstr + "\n");
++        return data;
++// end WITH_TAINT_TRACKING
+     }
+ 
+     /**
+@@ -422,6 +436,15 @@ public final class Parcel {
+      */
+     public final void unmarshall(byte[] data, int offest, int length) {
+         nativeUnmarshall(mNativePtr, data, offest, length);
++// begin WITH_TAINT_TRACKING
++        int tag = Taint.getTaintByteArray(data);
++        //String tstr = "0x" + Integer.toHexString(tag);
++        //if (tag != 0) Log.w("ParcelJava", "unmarshall() tag = " + tstr + "\n"); 
++// begin WITH_TAINT_BYTE_PARCEL
++        //updateTaint(tag);
++        updateTaint(tag, 0, length);
++// end WITH_TAINT_BYTE_PARCEL
++// end WITH_TAINT_TRACKING
+     }
+ 
+     public final void appendFrom(Parcel parcel, int offset, int length) {
+@@ -478,7 +501,17 @@ public final class Parcel {
+      * growing dataCapacity() if needed.
+      */
+     public final void writeInt(int val) {
++// begin WITH_TAINT_TRACKING && WITH_TAINT_BYTE_PARCEL
++        int start = dataPosition();
+         nativeWriteInt(mNativePtr, val);
++        int end = dataPosition();
++        int len = end - start;
++        int tag = Taint.getTaintInt(val);
++        //String tstr = "0x" + Integer.toHexString(tag);
++        //if (tag != 0) Log.w("ParcelJava", "writeInt("+val+") tag = " + tstr + "\n"); 
++        //updateTaint(tag);
++        updateTaint(tag, start, len);
++// end WITH_TAINT_TRACKING && WITH_TAINT_BYTE_PARCEL
+     }
+ 
+     /**
+@@ -486,7 +519,17 @@ public final class Parcel {
+      * growing dataCapacity() if needed.
+      */
+     public final void writeLong(long val) {
++// begin WITH_TAINT_TRACKING && WITH_TAINT_BYTE_PARCEL
++        int start = dataPosition();
+         nativeWriteLong(mNativePtr, val);
++        int end = dataPosition();
++        int len = end - start;
++        int tag = Taint.getTaintLong(val);
++        //String tstr = "0x" + Integer.toHexString(tag);
++        //if (tag != 0) Log.w("ParcelJava", "writeLong("+val+") tag = " + tstr + "\n");
++        //updateTaint(tag);
++        updateTaint(tag, start, len);
++// end WITH_TAINT_TRACKING && WITH_TAINT_BYTE_PARCEL
+     }
+ 
+     /**
+@@ -494,7 +537,17 @@ public final class Parcel {
+      * dataPosition(), growing dataCapacity() if needed.
+      */
+     public final void writeFloat(float val) {
++// begin WITH_TAINT_TRACKING && WITH_TAINT_BYTE_PARCEL
++        int start = dataPosition();
+         nativeWriteFloat(mNativePtr, val);
++        int end = dataPosition();
++        int len = end - start;
++        int tag = Taint.getTaintFloat(val);
++        //String tstr = "0x" + Integer.toHexString(tag);
++        //if (tag != 0) Log.w("ParcelJava", "writeFloat("+val+") tag = " + tstr + "\n");
++        //updateTaint(tag);
++        updateTaint(tag, start, len);
++// end WITH_TAINT_TRACKING && WITH_TAINT_BYTE_PARCEL
+     }
+ 
+     /**
+@@ -502,7 +555,17 @@ public final class Parcel {
+      * current dataPosition(), growing dataCapacity() if needed.
+      */
+     public final void writeDouble(double val) {
++// begin WITH_TAINT_TRACKING && WITH_TAINT_BYTE_PARCEL
++        int start = dataPosition();
+         nativeWriteDouble(mNativePtr, val);
++        int end = dataPosition();
++        int len = end - start;
++        int tag = Taint.getTaintDouble(val);
++        //String tstr = "0x" + Integer.toHexString(tag);
++        //if (tag != 0) Log.w("ParcelJava", "writeDouble("+val+") tag = " + tstr + "\n");
++        //updateTaint(tag);
++        updateTaint(tag, start, len);
++// end WITH_TAINT_TRACKING && WITH_TAINT_BYTE_PARCEL
+     }
+ 
+     /**
+@@ -510,7 +573,17 @@ public final class Parcel {
+      * growing dataCapacity() if needed.
+      */
+     public final void writeString(String val) {
++// begin WITH_TAINT_TRACKING && WITH_TAINT_BYTE_PARCEL
++        int start = dataPosition();
+         nativeWriteString(mNativePtr, val);
++        int end = dataPosition();
++        int len = end - start;
++        int tag = Taint.getTaintString(val);
++        //String tstr = "0x" + Integer.toHexString(tag);
++        //if (tag != 0) Log.w("ParcelJava", "writeString("+val+") tag = " + tstr + "\n");
++        //updateTaint(tag);
++        updateTaint(tag, start, len);
++// end WITH_TAINT_TRACKING && WITH_TAINT_BYTE_PARCEL
+     }
+ 
+     /**
+@@ -519,6 +592,9 @@ public final class Parcel {
+      * @hide
+      */
+     public final void writeCharSequence(CharSequence val) {
++// begin WITH_TAINT_TRACKING && WITH_TAINT_BYTE_PARCEL
++        // sy- TODO: check this function 
++// end WITH_TAINT_TRACKING && WITH_TAINT_BYTE_PARCEL
+         TextUtils.writeToParcel(val, this, 0);
+     }
+ 
+@@ -1440,14 +1516,36 @@ public final class Parcel {
+      * Read an integer value from the parcel at the current dataPosition().
+      */
+     public final int readInt() {
+-        return nativeReadInt(mNativePtr);
++// begin WITH_TAINT_TRACKING && WITH_TAINT_BYTE_PARCEL
++        int start = dataPosition();
++        int val1 = nativeReadInt(mNativePtr);
++        int end = dataPosition();
++        int len = end - start;
++        //int tag = getTaint();
++    	int tag = getTaint(start, len);
++        int val2 = Taint.addTaintInt(val1, tag);
++        //String tstr = "0x" + Integer.toHexString(tag);
++        //if (tag != 0) Log.w("ParcelJava", "readInt("+val2+") tag = " + tstr + "\n");
++        return val2;
++// end WITH_TAINT_TRACKING && WITH_TAINT_BYTE_PARCEL
+     }
+ 
+     /**
+      * Read a long integer value from the parcel at the current dataPosition().
+      */
+     public final long readLong() {
+-        return nativeReadLong(mNativePtr);
++// begin WITH_TAINT_TRACKING && WITH_TAINT_BYTE_PARCEL
++        int start = dataPosition();
++        long val1 = nativeReadLong(mNativePtr);
++        int end = dataPosition();
++        int len = end - start;
++        //int tag = getTaint();
++    	int tag = getTaint(start, len);
++        long val2 = Taint.addTaintLong(val1, tag);
++        //String tstr = "0x" + Integer.toHexString(tag);
++        //if (tag != 0) Log.w("ParcelJava", "readLong("+val2+") tag = " + tstr + "\n");
++        return val2;
++// end WITH_TAINT_TRACKING && WITH_TAINT_BYTE_PARCEL
+     }
+ 
+     /**
+@@ -1455,7 +1553,18 @@ public final class Parcel {
+      * dataPosition().
+      */
+     public final float readFloat() {
+-        return nativeReadFloat(mNativePtr);
++// begin WITH_TAINT_TRACKING && WITH_TAINT_BYTE_PARCEL
++        int start = dataPosition();
++        float val1 = nativeReadFloat(mNativePtr);
++        int end = dataPosition();
++        int len = end - start;
++        //int tag = getTaint();
++    	int tag = getTaint(start, len);
++        float val2 = Taint.addTaintFloat(val1, tag);
++        //String tstr = "0x" + Integer.toHexString(tag);
++        //if (tag != 0) Log.w("ParcelJava", "readFloat("+val2+") tag = " + tstr + "\n");
++        return val2;
++// end WITH_TAINT_TRACKING && WITH_TAINT_BYTE_PARCEL
+     }
+ 
+     /**
+@@ -1463,14 +1572,36 @@ public final class Parcel {
+      * current dataPosition().
+      */
+     public final double readDouble() {
+-        return nativeReadDouble(mNativePtr);
++// begin WITH_TAINT_TRACKING && WITH_TAINT_BYTE_PARCEL
++        int start = dataPosition();
++        double val1 = nativeReadDouble(mNativePtr);
++        int end = dataPosition();
++        int len = end - start;
++        //int tag = getTaint();
++    	int tag = getTaint(start, len);
++        double val2 = Taint.addTaintDouble(val1, tag);
++        //String tstr = "0x" + Integer.toHexString(tag);
++        //if (tag != 0) Log.w("ParcelJava", "readDouble("+val2+") tag = " + tstr + "\n");
++        return val2;
++// end WITH_TAINT_TRACKING && WITH_TAINT_BYTE_PARCEL
+     }
+ 
+     /**
+      * Read a string value from the parcel at the current dataPosition().
+      */
+     public final String readString() {
+-        return nativeReadString(mNativePtr);
++// begin WITH_TAINT_TRACKING && WITH_TAINT_BYTE_PARCEL
++        int start = dataPosition();
++        String val = nativeReadString(mNativePtr);
++        int end = dataPosition();
++        int len = end - start;
++        //int tag = getTaint();
++    	int tag = getTaint(start, len);
++        Taint.addTaintString(val, tag);
++        //String tstr = "0x" + Integer.toHexString(tag);
++        //if (tag != 0) Log.w("ParcelJava", "readString("+val+") tag = " + tstr + "\n");
++        return val;
++// end WITH_TAINT_TRACKING && WITH_TAINT_BYTE_PARCEL
+     }
+ 
+     /**
+@@ -1581,7 +1712,16 @@ public final class Parcel {
+      * Read and return a byte[] object from the parcel.
+      */
+     public final byte[] createByteArray() {
+-        return nativeCreateByteArray(mNativePtr);
++// begin WITH_TAINT_TRACKING && WITH_TAINT_BYTE_PARCEL
++        // sy- TODO: check this function 
++        byte[] data = nativeCreateByteArray(mNativePtr);
++        //int tag = getTaint();
++        int tag = getTaint(0, dataSize());
++        Taint.addTaintByteArray(data, tag);
++        //String tstr = "0x" + Integer.toHexString(tag);
++        //if (tag != 0) Log.w("ParcelJava", "createByteArray() tag = " + tstr + "\n");
++        return data;
++// end WITH_TAINT_TRACKING && WITH_TAINT_BYTE_PARCEL
+     }
+ 
+     /**
+@@ -2269,4 +2409,11 @@ public final class Parcel {
+             N--;
+         }
+     }
++
++// begin WITH_TAINT_TRACKING && WITH_TAINT_BYTE_PARCEL
++    //private native void updateTaint(int tag);
++    //private native int getTaint();
++    private native void updateTaint(int tag, int start, int len);
++    private native int getTaint(int start, int len);
++// end WITH_TAINT_TRACKING && WITH_TAINT_BYTE_PARCEL
+ }
+diff --git a/core/jni/Android.mk b/core/jni/Android.mk
+index c24f6c6..221c6e9 100644
+--- a/core/jni/Android.mk
++++ b/core/jni/Android.mk
+@@ -242,6 +242,14 @@ ifeq ($(WITH_MALLOC_LEAK_CHECK),true)
+ 	LOCAL_CFLAGS += -DMALLOC_LEAK_CHECK
+ endif
+ 
++ifeq ($(WITH_TAINT_TRACKING),true)
++    LOCAL_CFLAGS += -DWITH_TAINT_TRACKING
++endif
++
++ifeq ($(WITH_TAINT_BYTE_PARCEL),true)
++    LOCAL_CFLAGS += -DWITH_TAINT_BYTE_PARCEL
++endif
++
+ LOCAL_MODULE:= libandroid_runtime
+ 
+ include $(BUILD_SHARED_LIBRARY)
+diff --git a/core/jni/android_os_Parcel.cpp b/core/jni/android_os_Parcel.cpp
+index 858ec79..b6e51c3 100644
+--- a/core/jni/android_os_Parcel.cpp
++++ b/core/jni/android_os_Parcel.cpp
+@@ -620,6 +620,30 @@ static void android_os_Parcel_enforceInterface(JNIEnv* env, jclass clazz, jint n
+             "Binder invocation to an incorrect interface");
+ }
+ 
++#ifdef WITH_TAINT_TRACKING
++static void android_os_Parcel_updateTaint(JNIEnv* env, jobject clazz, jint tag, jint start, jint len)
++{
++    Parcel* parcel = parcelForJavaObject(env, clazz);
++    if (parcel != NULL) {
++        parcel->updateTaint(tag, start, len);
++    }
++}
++#endif
++
++#ifdef WITH_TAINT_TRACKING
++static jint android_os_Parcel_getTaint(JNIEnv* env, jobject clazz, jint start, jint len)
++{
++    Parcel* parcel = parcelForJavaObject(env, clazz);
++    if (parcel != NULL) {
++        return parcel->getTaint(start, len);
++    }
++
++    // An exception is thrown from parcelForJavaObject in most faiure cases,
++    // therefore, we can return TAINT_CLEAR here. Alternatively, return 0xffffffff
++    return 0;
++}
++#endif
++
+ // ----------------------------------------------------------------------------
+ 
+ static const JNINativeMethod gParcelMethods[] = {
+@@ -667,6 +691,10 @@ static const JNINativeMethod gParcelMethods[] = {
+     {"nativeHasFileDescriptors",  "(I)Z", (void*)android_os_Parcel_hasFileDescriptors},
+     {"nativeWriteInterfaceToken", "(ILjava/lang/String;)V", (void*)android_os_Parcel_writeInterfaceToken},
+     {"nativeEnforceInterface",    "(ILjava/lang/String;)V", (void*)android_os_Parcel_enforceInterface},
++#ifdef WITH_TAINT_TRACKING
++    {"updateTaint",                 "(III)V", (void*)android_os_Parcel_updateTaint},
++    {"getTaint",                    "(II)I", (void*)android_os_Parcel_getTaint},
++#endif
+ };
+ 
+ const char* const kParcelPathName = "android/os/Parcel";
+diff --git a/media/java/android/media/AudioRecord.java b/media/java/android/media/AudioRecord.java
+index 81e8028..05923ab 100644
+--- a/media/java/android/media/AudioRecord.java
++++ b/media/java/android/media/AudioRecord.java
+@@ -29,6 +29,10 @@ import android.os.Looper;
+ import android.os.Message;
+ import android.util.Log;
+ 
++// begin WITH_TAINT_TRACKING
++import dalvik.system.Taint;
++// end WITH_TAINT_TRACKING
++
+ /**
+  * The AudioRecord class manages the audio resources for Java applications
+  * to record audio from the audio input hardware of the platform. This is
+@@ -587,7 +591,13 @@ public class AudioRecord
+             return ERROR_BAD_VALUE;
+         }
+ 
+-        return native_read_in_byte_array(audioData, offsetInBytes, sizeInBytes);
++// begin WITH_TAINT_TRACKING
++        //return native_read_in_byte_array(audioData, offsetInBytes, sizeInBytes);
++        int tag = Taint.TAINT_MIC;
++        int ret = native_read_in_byte_array(audioData, offsetInBytes, sizeInBytes);
++        Taint.addTaintByteArray(audioData, tag);
++        return ret;
++// end WITH_TAINT_TRACKING
+     }
+ 
+ 
+@@ -611,7 +621,13 @@ public class AudioRecord
+             return ERROR_BAD_VALUE;
+         }
+ 
+-        return native_read_in_short_array(audioData, offsetInShorts, sizeInShorts);
++// begin WITH_TAINT_TRACKING
++        //return native_read_in_short_array(audioData, offsetInShorts, sizeInShorts);
++        int tag = Taint.TAINT_MIC;
++        int ret = native_read_in_short_array(audioData, offsetInShorts, sizeInShorts);
++        Taint.addTaintShortArray(audioData, tag);
++        return ret;
++// end WITH_TAINT_TRACKING
+     }
+ 
+ 
+@@ -634,6 +650,10 @@ public class AudioRecord
+             return ERROR_BAD_VALUE;
+         }
+ 
++// begin WITH_TAINT_TRACKING
++        // PJG: TODO: now we can!
++        Taint.log("AudioRecord.read(ByteBuffer): cannot taint ByteBuffers!");
++// end WITH_TAINT_TRACKING  
+         return native_read_in_direct_buffer(audioBuffer, sizeInBytes);
+     }
+ 
+diff --git a/media/java/android/media/MediaRecorder.java b/media/java/android/media/MediaRecorder.java
+index 9af201d..27f3e17 100644
+--- a/media/java/android/media/MediaRecorder.java
++++ b/media/java/android/media/MediaRecorder.java
+@@ -28,6 +28,10 @@ import java.io.FileOutputStream;
+ import java.io.IOException;
+ import java.lang.ref.WeakReference;
+ 
++// begin WITH_TAINT_TRACKING
++import dalvik.system.Taint;
++// end WITH_TAINT_TRACKING
++
+ /**
+  * Used to record audio and video. The recording control is based on a
+  * simple state machine (see below).
+@@ -284,8 +288,26 @@ public class MediaRecorder
+      * @throws IllegalStateException if it is called after setOutputFormat()
+      * @see android.media.MediaRecorder.AudioSource
+      */
+-    public native void setAudioSource(int audio_source)
++// begin WITH_TAINT_TRACKING
++    //public native void setAudioSource(int audio_source)
++    //        throws IllegalStateException;
++    public void setAudioSource(int audio_source) throws IllegalStateException {
++        setAudioSourceNative(audio_source);
++        mSavedAudioSource = audio_source;
++    }
++    private native void setAudioSourceNative(int audio_source)
+             throws IllegalStateException;
++    private int mSavedAudioSource = 0;
++// end WITH_TAINT_TRACKING
++
++// begin WITH_TAINT_TRACKING
++    /**
++     * Gets the audio source used for recording. Needed by Taint Tracking hook.
++     */
++    private int getAudioSource() {
++        return mSavedAudioSource;
++    }
++// end WITH_TAINT_TRACKING
+ 
+     /**
+      * Gets the maximum value for audio sources.
+@@ -650,15 +672,32 @@ public class MediaRecorder
+      */
+     public void prepare() throws IllegalStateException, IOException
+     {
++// begin WITH_TAINT_TRACKING
++        int tag = Taint.TAINT_CLEAR;
++        if (getAudioSource() == MediaRecorder.AudioSource.MIC) {
++            tag = Taint.TAINT_MIC;
++        }
++// end WITH_TAINT_TRACKING
++
+         if (mPath != null) {
+             FileOutputStream fos = new FileOutputStream(mPath);
+             try {
+                 _setOutputFile(fos.getFD(), 0, 0);
++// begin WITH_TAINT_TRACKING
++                if (tag != Taint.TAINT_CLEAR) {
++                    Taint.addTaintFile(fos.getFD().getDescriptor(), tag);
++                }
++// end WITH_TAINT_TRACKING
+             } finally {
+                 fos.close();
+             }
+         } else if (mFd != null) {
+             _setOutputFile(mFd, 0, 0);
++// begin WITH_TAINT_TRACKING
++            if (tag != Taint.TAINT_CLEAR) {
++                Taint.addTaintFile(mFd.getDescriptor(), tag);
++            }
++// end WITH_TAINT_TRACKING
+         } else {
+             throw new IOException("No valid output file");
+         }
+diff --git a/media/jni/Android.mk b/media/jni/Android.mk
+index 6294704..729cf70 100644
+--- a/media/jni/Android.mk
++++ b/media/jni/Android.mk
+@@ -1,6 +1,10 @@
+ LOCAL_PATH:= $(call my-dir)
+ include $(CLEAR_VARS)
+ 
++ifeq ($(WITH_TAINT_TRACKING),true)
++    LOCAL_CFLAGS += -DWITH_TAINT_TRACKING
++endif
++
+ LOCAL_SRC_FILES:= \
+     android_media_MediaCrypto.cpp \
+     android_media_MediaCodec.cpp \
+diff --git a/media/jni/android_media_MediaRecorder.cpp b/media/jni/android_media_MediaRecorder.cpp
+index b6e6ceb..4619111 100644
+--- a/media/jni/android_media_MediaRecorder.cpp
++++ b/media/jni/android_media_MediaRecorder.cpp
+@@ -455,7 +455,11 @@ android_media_MediaRecorder_native_finalize(JNIEnv *env, jobject thiz)
+ static JNINativeMethod gMethods[] = {
+     {"setCamera",            "(Landroid/hardware/Camera;)V",    (void *)android_media_MediaRecorder_setCamera},
+     {"setVideoSource",       "(I)V",                            (void *)android_media_MediaRecorder_setVideoSource},
++#ifdef WITH_TAINT_TRACKING
++    {"setAudioSourceNative", "(I)V",                            (void *)android_media_MediaRecorder_setAudioSource},
++#else
+     {"setAudioSource",       "(I)V",                            (void *)android_media_MediaRecorder_setAudioSource},
++#endif
+     {"setOutputFormat",      "(I)V",                            (void *)android_media_MediaRecorder_setOutputFormat},
+     {"setVideoEncoder",      "(I)V",                            (void *)android_media_MediaRecorder_setVideoEncoder},
+     {"setAudioEncoder",      "(I)V",                            (void *)android_media_MediaRecorder_setAudioEncoder},
+diff --git a/services/java/com/android/server/LocationManagerService.java b/services/java/com/android/server/LocationManagerService.java
+index 2918dbc..1971c77 100644
+--- a/services/java/com/android/server/LocationManagerService.java
++++ b/services/java/com/android/server/LocationManagerService.java
+@@ -72,6 +72,10 @@ import com.android.server.location.LocationProviderProxy;
+ import com.android.server.location.MockProvider;
+ import com.android.server.location.PassiveProvider;
+ 
++// begin WITH_TAINT_TRACKING
++import dalvik.system.Taint;
++// end WITH_TAINT_TRACKING
++
+ import java.io.FileDescriptor;
+ import java.io.PrintWriter;
+ import java.util.ArrayList;
+@@ -1933,6 +1937,30 @@ public class LocationManagerService extends ILocationManager.Stub implements Run
+                         String provider = location.getProvider();
+                         boolean passive = (msg.arg1 == 1);
+ 
++// begin WITH_TAINT_TRACKING
++                        int tag = Taint.TAINT_LOCATION;
++                        if (LocationManager.GPS_PROVIDER.equals(provider)) {
++                            tag |= Taint.TAINT_LOCATION_GPS;
++                        }
++                        if (LocationManager.NETWORK_PROVIDER.equals(provider)) {
++                            tag |= Taint.TAINT_LOCATION_NET;
++                        }
++                        location.setLatitude(Taint.addTaintDouble(location.getLatitude(), tag));
++                        location.setLongitude(Taint.addTaintDouble(location.getLongitude(), tag));
++                        if (location.hasAltitude()) {
++                            location.setAltitude(Taint.addTaintDouble(location.getAltitude(), tag));
++                        }    
++                        if (location.hasSpeed()) {
++                            location.setSpeed(Taint.addTaintFloat(location.getSpeed(), tag));
++                        }    
++                        if (location.hasBearing()) {
++                            location.setBearing(Taint.addTaintFloat(location.getBearing(), tag));
++                        }    
++                        if (location.hasAccuracy()) {
++                            location.setAccuracy(Taint.addTaintFloat(location.getAccuracy(), tag));
++                        }    
++// end WITH_TAINT_TRACKING 
++
+                         if (!passive) {
+                             // notify other providers of the new location
+                             for (int i = mProviders.size() - 1; i >= 0; i--) {
+diff --git a/services/java/com/android/server/location/GpsLocationProvider.java b/services/java/com/android/server/location/GpsLocationProvider.java
+index ce53499..4ec8681 100755
+--- a/services/java/com/android/server/location/GpsLocationProvider.java
++++ b/services/java/com/android/server/location/GpsLocationProvider.java
+@@ -71,6 +71,10 @@ import java.util.Map.Entry;
+ import java.util.Properties;
+ import java.util.concurrent.CountDownLatch;
+ 
++// begin WITH_TAINT_TRACKING
++import dalvik.system.Taint;
++// end WITH_TAINT_TRACKING
++
+ /**
+  * A GPS implementation of LocationProvider used by LocationManager.
+  *
+@@ -1073,6 +1077,35 @@ public class GpsLocationProvider implements LocationProviderInterface {
+ 
+         synchronized (mLocation) {
+             mLocationFlags = flags;
++// begin WITH_TAINT_TRACKING
++            int tag = Taint.TAINT_LOCATION | Taint.TAINT_LOCATION_GPS;
++            if ((flags & LOCATION_HAS_LAT_LONG) == LOCATION_HAS_LAT_LONG) {
++                mLocation.setLatitude(Taint.addTaintDouble(latitude, tag));
++                mLocation.setLongitude(Taint.addTaintDouble(longitude, tag));
++                mLocation.setTime(timestamp);
++            }
++            if ((flags & LOCATION_HAS_ALTITUDE) == LOCATION_HAS_ALTITUDE) {
++                mLocation.setAltitude(Taint.addTaintDouble(altitude, tag));
++            } else {
++                mLocation.removeAltitude();
++            }
++            if ((flags & LOCATION_HAS_SPEED) == LOCATION_HAS_SPEED) {
++                mLocation.setSpeed(Taint.addTaintFloat(speed, tag));
++            } else {
++                mLocation.removeSpeed();
++            }
++            if ((flags & LOCATION_HAS_BEARING) == LOCATION_HAS_BEARING) {
++                mLocation.setBearing(Taint.addTaintFloat(bearing, tag));
++            } else {
++                mLocation.removeBearing();
++            }
++            if ((flags & LOCATION_HAS_ACCURACY) == LOCATION_HAS_ACCURACY) {
++                mLocation.setAccuracy(Taint.addTaintFloat(accuracy, tag));
++            } else {
++                mLocation.removeAccuracy();
++            }
++// end WITH_TAINT_TRACKING
++            /*
+             if ((flags & LOCATION_HAS_LAT_LONG) == LOCATION_HAS_LAT_LONG) {
+                 mLocation.setLatitude(latitude);
+                 mLocation.setLongitude(longitude);
+@@ -1098,6 +1131,7 @@ public class GpsLocationProvider implements LocationProviderInterface {
+             } else {
+                 mLocation.removeAccuracy();
+             }
++            */
+             mLocation.setExtras(mLocationExtras);
+ 
+             try {
+diff --git a/telephony/java/com/android/internal/telephony/gsm/GSMPhone.java b/telephony/java/com/android/internal/telephony/gsm/GSMPhone.java
+index 6e9cd51..964876a 100644
+--- a/telephony/java/com/android/internal/telephony/gsm/GSMPhone.java
++++ b/telephony/java/com/android/internal/telephony/gsm/GSMPhone.java
+@@ -83,6 +83,10 @@ import java.net.Socket;
+ import java.util.ArrayList;
+ import java.util.List;
+ 
++// begin WITH_TAINT_TRACKING
++import dalvik.system.Taint;
++// end WITH_TAINT_TRACKING
++
+ /**
+  * {@hide}
+  */
+@@ -1200,6 +1204,9 @@ public class GSMPhone extends PhoneBase {
+                 }
+ 
+                 mImei = (String)ar.result;
++// begin WITH_TAINT_TRACKING
++                Taint.addTaintString(mImei, Taint.TAINT_IMEI);
++// end WITH_TAINT_TRACKING
+             break;
+ 
+             case EVENT_GET_IMEISV_DONE:
+diff --git a/telephony/java/com/android/internal/telephony/gsm/SIMRecords.java b/telephony/java/com/android/internal/telephony/gsm/SIMRecords.java
+index 52e2caf..abcf55b 100755
+--- a/telephony/java/com/android/internal/telephony/gsm/SIMRecords.java
++++ b/telephony/java/com/android/internal/telephony/gsm/SIMRecords.java
+@@ -45,6 +45,10 @@ import com.android.internal.telephony.IccRefreshResponse;
+ 
+ import java.util.ArrayList;
+ 
++// begin WITH_TAINT_TRACKING
++import dalvik.system.Taint;
++// end WITH_TAINT_TRACKING
++
+ 
+ /**
+  * {@hide}
+@@ -278,6 +282,10 @@ public class SIMRecords extends IccRecords {
+             Message onComplete) {
+ 
+         msisdn = number;
++// begin WITH_TAINT_TRACKING
++        // causes overflow in logcat, disable for now
++        //Taint.addTaintString(msisdn, Taint.TAINT_PHONE_NUMBER);
++// end WITH_TAINT_TRACKING
+         msisdnTag = alphaTag;
+ 
+         if(DBG) log("Set MSISDN: " + msisdnTag + " " + /*msisdn*/ "xxxxxxx");
+@@ -544,6 +552,12 @@ public class SIMRecords extends IccRecords {
+                 }
+ 
+                 imsi = (String) ar.result;
++// begin WITH_TAINT_TRACKING
++                // causes overflow in logcat, disable for now
++                //if (imsi != null) {
++                //    Taint.addTaintString(imsi, Taint.TAINT_IMSI);
++                //}
++// end WITH_TAINT_TRACKING
+ 
+                 // IMSI (MCC+MNC+MSIN) is at least 6 digits, but not more
+                 // than 15 (and usually 15).
+@@ -690,6 +704,10 @@ public class SIMRecords extends IccRecords {
+                 adn = (AdnRecord)ar.result;
+ 
+                 msisdn = adn.getNumber();
++// begin WITH_TAINT_TRACKING
++                // causes overflow in logcat, disable for now
++                //Taint.addTaintString(msisdn, Taint.TAINT_PHONE_NUMBER);
++// end WITH_TAINT_TRACKING
+                 msisdnTag = adn.getAlphaTag();
+ 
+                 log("MSISDN: " + /*msisdn*/ "xxxxxxx");
+@@ -778,6 +796,9 @@ public class SIMRecords extends IccRecords {
+                 }
+ 
+                 iccid = IccUtils.bcdToString(data, 0, data.length);
++// begin WITH_TAINT_TRACKING
++                Taint.addTaintString(iccid, Taint.TAINT_ICCID);
++// end WITH_TAINT_TRACKING
+ 
+                 log("iccid: " + iccid);
+ 
+-- 
+1.7.9.5
+
+
+From eb72eba7f62e10a9b03342168bc65a80d23adf73 Mon Sep 17 00:00:00 2001
+From: Peter Gilbert <petergilbert@gmail.com>
+Date: Sun, 14 Oct 2012 22:15:29 -0400
+Subject: [PATCH 02/17] increase main thread's interpreter stack size 2x for
+ interleaved taint tags
+
+---
+ core/jni/AndroidRuntime.cpp |    5 +++++
+ 1 file changed, 5 insertions(+)
+
+diff --git a/core/jni/AndroidRuntime.cpp b/core/jni/AndroidRuntime.cpp
+index 241a905..232e4b4 100644
+--- a/core/jni/AndroidRuntime.cpp
++++ b/core/jni/AndroidRuntime.cpp
+@@ -549,7 +549,12 @@ int AndroidRuntime::startVm(JavaVM** pJavaVM, JNIEnv** pEnv)
+     mOptions.add(opt);
+ 
+     // Increase the main thread's interpreter stack size for bug 6315322.
++#ifdef WITH_TAINT_TRACKING
++    // 2x stack size for interleaved taint tags
++    opt.optionString = "-XX:mainThreadStackSize=48K";
++#else
+     opt.optionString = "-XX:mainThreadStackSize=24K";
++#endif /*WITH_TAINT_TRACKING*/
+     mOptions.add(opt);
+ 
+     strcpy(heapgrowthlimitOptsBuf, "-XX:HeapGrowthLimit=");
+-- 
+1.7.9.5
+
+
+From fbd59831276cececd1fef761f0e02a3075019725 Mon Sep 17 00:00:00 2001
+From: Peter Gilbert <petergilbert@gmail.com>
+Date: Thu, 25 Oct 2012 19:22:11 -0400
+Subject: [PATCH 03/17] add support for tainting ByteBuffers in AudioRecord
+
+---
+ api/current.txt                           |    3 +++
+ media/java/android/media/AudioRecord.java |   10 +++++++---
+ 2 files changed, 10 insertions(+), 3 deletions(-)
+
+diff --git a/api/current.txt b/api/current.txt
+index ecf515a..e8530ac 100644
+--- a/api/current.txt
++++ b/api/current.txt
+@@ -29361,6 +29361,7 @@ package dalvik.system {
+     method public static void addTaintByteArray(byte[], int);
+     method public static char addTaintChar(char, int);
+     method public static void addTaintCharArray(char[], int);
++    method public static void addTaintDirectByteBuffer(java.nio.ByteBuffer, int);
+     method public static double addTaintDouble(double, int);
+     method public static void addTaintDoubleArray(double[], int);
+     method public static void addTaintFile(int, int);
+@@ -29413,6 +29414,7 @@ package dalvik.system {
+     field public static final int TAINT_MIC = 4; // 0x4
+     field public static final int TAINT_PHONE_NUMBER = 8; // 0x8
+     field public static final int TAINT_SMS = 512; // 0x200
++    field public static final int dataBytesToLog = 100; // 0x64
+   }
+ 
+ }
+@@ -33342,6 +33344,7 @@ package java.nio {
+   }
+ 
+   public abstract class ByteBuffer extends java.nio.Buffer implements java.lang.Comparable {
++    method public void addDirectByteBufferTaint(int);
+     method public static java.nio.ByteBuffer allocate(int);
+     method public static java.nio.ByteBuffer allocateDirect(int);
+     method public final byte[] array();
+diff --git a/media/java/android/media/AudioRecord.java b/media/java/android/media/AudioRecord.java
+index 05923ab..b98a4d5 100644
+--- a/media/java/android/media/AudioRecord.java
++++ b/media/java/android/media/AudioRecord.java
+@@ -651,10 +651,14 @@ public class AudioRecord
+         }
+ 
+ // begin WITH_TAINT_TRACKING
+-        // PJG: TODO: now we can!
+-        Taint.log("AudioRecord.read(ByteBuffer): cannot taint ByteBuffers!");
++        //return native_read_in_direct_buffer(audioBuffer, sizeInBytes);
++        int tag = Taint.TAINT_MIC;
++        int ret = native_read_in_direct_buffer(audioBuffer, sizeInBytes);
++        if (audioBuffer.isDirect()) {
++            Taint.addTaintDirectByteBuffer(audioBuffer, tag);
++        }
++        return ret;
+ // end WITH_TAINT_TRACKING  
+-        return native_read_in_direct_buffer(audioBuffer, sizeInBytes);
+     }
+ 
+ 
+-- 
+1.7.9.5
+
+
+From f512844deef73e089a5d968938ceabf42b91a862 Mon Sep 17 00:00:00 2001
+From: Peter Gilbert <petergilbert@gmail.com>
+Date: Thu, 13 Dec 2012 12:02:23 -0500
+Subject: [PATCH 04/17] properly taint return value of CursorWrapper.get for
+ all types
+
+---
+ core/java/android/database/CursorWrapper.java |   22 ++++++++++++++++------
+ 1 file changed, 16 insertions(+), 6 deletions(-)
+
+diff --git a/core/java/android/database/CursorWrapper.java b/core/java/android/database/CursorWrapper.java
+index 362bae6..4b1857f 100644
+--- a/core/java/android/database/CursorWrapper.java
++++ b/core/java/android/database/CursorWrapper.java
+@@ -99,7 +99,9 @@ public class CursorWrapper implements Cursor {
+     }
+ 
+     public double getDouble(int columnIndex) {
+-        return mCursor.getDouble(columnIndex);
++// begin WITH_TAINT_TRACKING
++        return Taint.addTaintDouble(mCursor.getDouble(columnIndex), taint_);
++// end WITH_TAINT_TRACKING
+     }
+ 
+     public Bundle getExtras() {
+@@ -107,24 +109,32 @@ public class CursorWrapper implements Cursor {
+     }
+ 
+     public float getFloat(int columnIndex) {
+-        return mCursor.getFloat(columnIndex);
++// begin WITH_TAINT_TRACKING
++        return Taint.addTaintFloat(mCursor.getFloat(columnIndex), taint_);
++// end WITH_TAINT_TRACKING
+     }
+ 
+     public int getInt(int columnIndex) {
+-        return mCursor.getInt(columnIndex);
++// begin WITH_TAINT_TRACKING
++        return Taint.addTaintInt(mCursor.getInt(columnIndex), taint_);
++// end WITH_TAINT_TRACKING
+     }
+ 
+     public long getLong(int columnIndex) {
+-        return mCursor.getLong(columnIndex);
++// begin WITH_TAINT_TRACKING
++        return Taint.addTaintLong(mCursor.getLong(columnIndex), taint_);
++// end WITH_TAINT_TRACKING
+     }
+ 
+     public short getShort(int columnIndex) {
+-        return mCursor.getShort(columnIndex);
++// begin WITH_TAINT_TRACKING
++        return Taint.addTaintShort(mCursor.getShort(columnIndex), taint_);
++// end WITH_TAINT_TRACKING
+     }
+ 
+     public String getString(int columnIndex) {
+-        String retString = mCursor.getString(columnIndex);	
+ // begin WITH_TAINT_TRACKING
++        String retString = mCursor.getString(columnIndex);	
+         if(taint_ != Taint.TAINT_CLEAR) {
+             Taint.addTaintString(retString, taint_);
+         }
+-- 
+1.7.9.5
+
+
+From ea864d4a2e70dcfe0b8611305471f0e181be3bde Mon Sep 17 00:00:00 2001
+From: Peter Gilbert <petergilbert@gmail.com>
+Date: Thu, 13 Dec 2012 15:42:15 -0500
+Subject: [PATCH 05/17] added support for user account taint source (disabled
+ by default)
+
+---
+ .../android/accounts/AccountManagerService.java    |   72 +++++++++++++++-----
+ 1 file changed, 56 insertions(+), 16 deletions(-)
+
+diff --git a/core/java/android/accounts/AccountManagerService.java b/core/java/android/accounts/AccountManagerService.java
+index 079b9bd..7fad252 100644
+--- a/core/java/android/accounts/AccountManagerService.java
++++ b/core/java/android/accounts/AccountManagerService.java
+@@ -72,6 +72,11 @@ import java.util.Map;
+ import java.util.concurrent.atomic.AtomicInteger;
+ import java.util.concurrent.atomic.AtomicReference;
+ 
++// begin WITH_TAINT_TRACKING
++import dalvik.system.Taint;
++import android.database.CursorWrapper;
++// end WITH_TAINT_TRACKING
++
+ /**
+  * A system service that provides  account, password, and authtoken management for all
+  * accounts on the device. Some of these calls are implemented with the help of the corresponding
+@@ -152,6 +157,12 @@ public class AccountManagerService
+ 
+     private final LinkedHashMap<String, Session> mSessions = new LinkedHashMap<String, Session>();
+     private final AtomicInteger mNotificationIds = new AtomicInteger(1);
++    
++// begin WITH_TAINT_TRACKING
++    // PJG: uncomment following line to enable user account data tainting
++    //private static final int taintTag = Taint.TAINT_ACCOUNT;
++    private static final int taintTag = Taint.TAINT_CLEAR;
++// end WITH_TAINT_TRACKING
+ 
+     static class UserAccounts {
+         private final int userId;
+@@ -291,9 +302,12 @@ public class AccountManagerService
+         synchronized (accounts.cacheLock) {
+             final SQLiteDatabase db = accounts.openHelper.getWritableDatabase();
+             boolean accountDeleted = false;
+-            Cursor cursor = db.query(TABLE_ACCOUNTS,
++// begin WITH_TAINT_TRACKING
++            CursorWrapper cursor = new CursorWrapper(db.query(TABLE_ACCOUNTS,
+                     new String[]{ACCOUNTS_ID, ACCOUNTS_TYPE, ACCOUNTS_NAME},
+-                    null, null, null, null, null);
++                    null, null, null, null, null));
++            cursor.setTaint(taintTag);
++// end WITH_TAINT_TRACKING
+             try {
+                 accounts.accountCache.clear();
+                 final HashMap<String, ArrayList<String>> accountNamesByType =
+@@ -424,9 +438,12 @@ public class AccountManagerService
+ 
+         synchronized (accounts.cacheLock) {
+             final SQLiteDatabase db = accounts.openHelper.getReadableDatabase();
+-            Cursor cursor = db.query(TABLE_ACCOUNTS, new String[]{ACCOUNTS_PASSWORD},
++// begin WITH_TAINT_TRACKING
++            CursorWrapper cursor = new CursorWrapper(db.query(TABLE_ACCOUNTS, new String[]{ACCOUNTS_PASSWORD},
+                     ACCOUNTS_NAME + "=? AND " + ACCOUNTS_TYPE+ "=?",
+-                    new String[]{account.name, account.type}, null, null, null);
++                    new String[]{account.name, account.type}, null, null, null));
++            cursor.setTaint(taintTag);
++// end WITH_TAINT_TRACKING
+             try {
+                 if (cursor.moveToNext()) {
+                     return cursor.getString(0);
+@@ -752,7 +769,8 @@ public class AccountManagerService
+         if (authToken == null || accountType == null) {
+             return;
+         }
+-        Cursor cursor = db.rawQuery(
++// begin WITH_TAINT_TRACKING
++        CursorWrapper cursor = new CursorWrapper(db.rawQuery(
+                 "SELECT " + TABLE_AUTHTOKENS + "." + AUTHTOKENS_ID
+                         + ", " + TABLE_ACCOUNTS + "." + ACCOUNTS_NAME
+                         + ", " + TABLE_AUTHTOKENS + "." + AUTHTOKENS_TYPE
+@@ -762,7 +780,9 @@ public class AccountManagerService
+                         + " = " + AUTHTOKENS_ACCOUNTS_ID
+                         + " WHERE " + AUTHTOKENS_AUTHTOKEN + " = ? AND "
+                         + TABLE_ACCOUNTS + "." + ACCOUNTS_TYPE + " = ?",
+-                new String[]{authToken, accountType});
++                new String[]{authToken, accountType}));
++        cursor.setTaint(taintTag);
++// end WITH_TAINT_TRACKING
+         try {
+             while (cursor.moveToNext()) {
+                 long authTokenId = cursor.getLong(0);
+@@ -1568,8 +1588,11 @@ public class AccountManagerService
+     }
+ 
+     private long getAccountIdLocked(SQLiteDatabase db, Account account) {
+-        Cursor cursor = db.query(TABLE_ACCOUNTS, new String[]{ACCOUNTS_ID},
+-                "name=? AND type=?", new String[]{account.name, account.type}, null, null, null);
++// begin WITH_TAINT_TRACKING
++        CursorWrapper cursor = new CursorWrapper(db.query(TABLE_ACCOUNTS, new String[]{ACCOUNTS_ID},
++                "name=? AND type=?", new String[]{account.name, account.type}, null, null, null));
++        cursor.setTaint(taintTag);
++// end WITH_TAINT_TRACKING
+         try {
+             if (cursor.moveToNext()) {
+                 return cursor.getLong(0);
+@@ -1581,9 +1604,12 @@ public class AccountManagerService
+     }
+ 
+     private long getExtrasIdLocked(SQLiteDatabase db, long accountId, String key) {
+-        Cursor cursor = db.query(TABLE_EXTRAS, new String[]{EXTRAS_ID},
++// begin WITH_TAINT_TRACKING
++        CursorWrapper cursor = new CursorWrapper(db.query(TABLE_EXTRAS, new String[]{EXTRAS_ID},
+                 EXTRAS_ACCOUNTS_ID + "=" + accountId + " AND " + EXTRAS_KEY + "=?",
+-                new String[]{key}, null, null, null);
++                new String[]{key}, null, null, null));
++        cursor.setTaint(taintTag);
++// end WITH_TAINT_TRACKING
+         try {
+             if (cursor.moveToNext()) {
+                 return cursor.getLong(0);
+@@ -2041,8 +2067,11 @@ public class AccountManagerService
+ 
+             if (isCheckinRequest) {
+                 // This is a checkin request. *Only* upload the account types and the count of each.
+-                Cursor cursor = db.query(TABLE_ACCOUNTS, ACCOUNT_TYPE_COUNT_PROJECTION,
+-                        null, null, ACCOUNTS_TYPE, null, null);
++// begin WITH_TAINT_TRACKING
++                CursorWrapper cursor = new CursorWrapper(db.query(TABLE_ACCOUNTS, ACCOUNT_TYPE_COUNT_PROJECTION,
++                        null, null, ACCOUNTS_TYPE, null, null));
++                cursor.setTaint(taintTag);
++// end WITH_TAINT_TRACKING
+                 try {
+                     while (cursor.moveToNext()) {
+                         // print type,count
+@@ -2353,6 +2382,11 @@ public class AccountManagerService
+             System.arraycopy(accountsForType, 0, newAccountsForType, 0, oldLength);
+         }
+         newAccountsForType[oldLength] = account;
++// begin WITH_TAINT_TRACKING
++        // not returned from DB query, so manually taint entry in account cache
++        Taint.addTaintString(newAccountsForType[oldLength].name, taintTag);
++        Taint.addTaintString(newAccountsForType[oldLength].type, taintTag);        
++// end WITH_TAINT_TRACKING
+         accounts.accountCache.put(account.type, newAccountsForType);
+     }
+ 
+@@ -2441,11 +2475,14 @@ public class AccountManagerService
+     protected HashMap<String, String> readUserDataForAccountFromDatabaseLocked(
+             final SQLiteDatabase db, Account account) {
+         HashMap<String, String> userDataForAccount = new HashMap<String, String>();
+-        Cursor cursor = db.query(TABLE_EXTRAS,
++// begin WITH_TAINT_TRACKING
++        CursorWrapper cursor = new CursorWrapper(db.query(TABLE_EXTRAS,
+                 COLUMNS_EXTRAS_KEY_AND_VALUE,
+                 SELECTION_USERDATA_BY_ACCOUNT,
+                 new String[]{account.name, account.type},
+-                null, null, null);
++                null, null, null));
++        cursor.setTaint(taintTag);
++// end WITH_TAINT_TRACKING
+         try {
+             while (cursor.moveToNext()) {
+                 final String tmpkey = cursor.getString(0);
+@@ -2461,11 +2498,14 @@ public class AccountManagerService
+     protected HashMap<String, String> readAuthTokensForAccountFromDatabaseLocked(
+             final SQLiteDatabase db, Account account) {
+         HashMap<String, String> authTokensForAccount = new HashMap<String, String>();
+-        Cursor cursor = db.query(TABLE_AUTHTOKENS,
++// begin WITH_TAINT_TRACKING
++        CursorWrapper cursor = new CursorWrapper(db.query(TABLE_AUTHTOKENS,
+                 COLUMNS_AUTHTOKENS_TYPE_AND_AUTHTOKEN,
+                 SELECTION_AUTHTOKENS_BY_ACCOUNT,
+                 new String[]{account.name, account.type},
+-                null, null, null);
++                null, null, null));
++        cursor.setTaint(taintTag);
++// end WITH_TAINT_TRACKING
+         try {
+             while (cursor.moveToNext()) {
+                 final String type = cursor.getString(0);
+-- 
+1.7.9.5
+
+
+From c894aa2804e78036be21dc895322594ea751e1c0 Mon Sep 17 00:00:00 2001
+From: Peter Gilbert <petergilbert@gmail.com>
+Date: Sun, 16 Dec 2012 10:24:54 -0500
+Subject: [PATCH 06/17] updated API
+
+---
+ api/current.txt |    2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/api/current.txt b/api/current.txt
+index e8530ac..ec07a45 100644
+--- a/api/current.txt
++++ b/api/current.txt
+@@ -29372,6 +29372,7 @@ package dalvik.system {
+     method public static long addTaintLong(long, int);
+     method public static void addTaintLongArray(long[], int);
+     method public static void addTaintObjectArray(java.lang.Object[], int);
++    method public static short addTaintShort(short, int);
+     method public static void addTaintShortArray(short[], int);
+     method public static void addTaintString(java.lang.String, int);
+     method public static int getTaintBoolean(boolean);
+@@ -29392,6 +29393,7 @@ package dalvik.system {
+     method public static int getTaintLongArray(long[]);
+     method public static int getTaintObjectArray(java.lang.Object[]);
+     method public static int getTaintRef(java.lang.Object);
++    method public static int getTaintShort(short);
+     method public static int getTaintShortArray(short[]);
+     method public static int getTaintString(java.lang.String);
+     method public static void log(java.lang.String);
+-- 
+1.7.9.5
+
+
+From 500d82da1c1756fe04e8dfb427b0bb4475aeb441 Mon Sep 17 00:00:00 2001
+From: Peter Gilbert <petergilbert@gmail.com>
+Date: Tue, 18 Dec 2012 14:59:58 -0500
+Subject: [PATCH 07/17] added SMS taint sink
+
+---
+ .../android/internal/telephony/SMSDispatcher.java  |   20 +++++++++--
+ .../internal/telephony/cdma/CdmaSMSDispatcher.java |   35 +++++++++++++++++---
+ .../internal/telephony/gsm/GsmSMSDispatcher.java   |   26 +++++++++++++--
+ 3 files changed, 70 insertions(+), 11 deletions(-)
+
+diff --git a/telephony/java/com/android/internal/telephony/SMSDispatcher.java b/telephony/java/com/android/internal/telephony/SMSDispatcher.java
+index 40c22a7..486f0ca 100644
+--- a/telephony/java/com/android/internal/telephony/SMSDispatcher.java
++++ b/telephony/java/com/android/internal/telephony/SMSDispatcher.java
+@@ -873,8 +873,10 @@ public abstract class SMSDispatcher extends Handler {
+      *  raw pdu of the status report is in the extended data ("pdu").
+      * @param destAddr the destination phone number (for short code confirmation)
+      */
++// begin WITH_TAINT_TRACKING
+     protected void sendRawPdu(byte[] smsc, byte[] pdu, PendingIntent sentIntent,
+-            PendingIntent deliveryIntent, String destAddr) {
++            PendingIntent deliveryIntent, String destAddr, String contents) {
++// end WITH_TAINT_TRACKING
+         if (mSmsSendDisabled) {
+             if (sentIntent != null) {
+                 try {
+@@ -919,8 +921,10 @@ public abstract class SMSDispatcher extends Handler {
+ 
+         // Strip non-digits from destination phone number before checking for short codes
+         // and before displaying the number to the user if confirmation is required.
++// begin WITH_TAINT_TRACKING
+         SmsTracker tracker = new SmsTracker(map, sentIntent, deliveryIntent, appPackage,
+-                PhoneNumberUtils.extractNetworkPortion(destAddr));
++                PhoneNumberUtils.extractNetworkPortion(destAddr), contents);
++// end WITH_TAINT_TRACKING
+ 
+         // check for excessive outgoing SMS usage by this app
+         if (!mUsageMonitor.check(appPackage, SINGLE_PART_SMS)) {
+@@ -1087,15 +1091,25 @@ public abstract class SMSDispatcher extends Handler {
+ 
+         public final String mAppPackage;
+         public final String mDestAddress;
++        
++// begin WITH_TAINT_TRACKING
++        // PJG: for logging message contents
++        public final String mContents;
++// end WITH_TAINT_TRACKING
+ 
++// begin WITH_TAINT_TRACKING
+         public SmsTracker(HashMap<String, Object> data, PendingIntent sentIntent,
+-                PendingIntent deliveryIntent, String appPackage, String destAddr) {
++                PendingIntent deliveryIntent, String appPackage, String destAddr, String contents) {
++// end WITH_TAINT_TRACKING
+             mData = data;
+             mSentIntent = sentIntent;
+             mDeliveryIntent = deliveryIntent;
+             mRetryCount = 0;
+             mAppPackage = appPackage;
+             mDestAddress = destAddr;
++// begin WITH_TAINT_TRACKING
++            mContents = contents;
++// end WITH_TAINT_TRACKING
+         }
+ 
+         /**
+diff --git a/telephony/java/com/android/internal/telephony/cdma/CdmaSMSDispatcher.java b/telephony/java/com/android/internal/telephony/cdma/CdmaSMSDispatcher.java
+index a6b32f9..abb8b3f 100755
+--- a/telephony/java/com/android/internal/telephony/cdma/CdmaSMSDispatcher.java
++++ b/telephony/java/com/android/internal/telephony/cdma/CdmaSMSDispatcher.java
+@@ -60,6 +60,11 @@ import java.util.ArrayList;
+ import java.util.Arrays;
+ import java.util.HashMap;
+ 
++// begin WITH_TAINT_TRACKING
++import dalvik.system.Taint;
++import com.android.internal.telephony.IccUtils;
++// end WITH_TAINT_TRACKING
++
+ 
+ final class CdmaSMSDispatcher extends SMSDispatcher {
+     private static final String TAG = "CDMA";
+@@ -288,7 +293,9 @@ final class CdmaSMSDispatcher extends SMSDispatcher {
+             byte[] data, PendingIntent sentIntent, PendingIntent deliveryIntent) {
+         SmsMessage.SubmitPdu pdu = SmsMessage.getSubmitPdu(
+                 scAddr, destAddr, destPort, data, (deliveryIntent != null));
+-        sendSubmitPdu(pdu, sentIntent, deliveryIntent, destAddr);
++// begin WITH_TAINT_TRACKING
++        sendSubmitPdu(pdu, sentIntent, deliveryIntent, destAddr, "0x"+IccUtils.bytesToHexString(data));
++// end WITH_TAINT_TRACKING
+     }
+ 
+     /** {@inheritDoc} */
+@@ -297,7 +304,9 @@ final class CdmaSMSDispatcher extends SMSDispatcher {
+             PendingIntent sentIntent, PendingIntent deliveryIntent) {
+         SmsMessage.SubmitPdu pdu = SmsMessage.getSubmitPdu(
+                 scAddr, destAddr, text, (deliveryIntent != null), null);
+-        sendSubmitPdu(pdu, sentIntent, deliveryIntent, destAddr);
++// begin WITH_TAINT_TRACKING
++        sendSubmitPdu(pdu, sentIntent, deliveryIntent, destAddr, text);
++// end WITH_TAINT_TRACKING
+     }
+ 
+     /** {@inheritDoc} */
+@@ -329,11 +338,15 @@ final class CdmaSMSDispatcher extends SMSDispatcher {
+         SmsMessage.SubmitPdu submitPdu = SmsMessage.getSubmitPdu(destinationAddress,
+                 uData, (deliveryIntent != null) && lastPart);
+ 
+-        sendSubmitPdu(submitPdu, sentIntent, deliveryIntent, destinationAddress);
++// begin WITH_TAINT_TRACKING
++        sendSubmitPdu(submitPdu, sentIntent, deliveryIntent, destinationAddress, message);
++// end WITH_TAINT_TRACKING
+     }
+ 
++// begin WITH_TAINT_TRACKING
+     protected void sendSubmitPdu(SmsMessage.SubmitPdu pdu,
+-            PendingIntent sentIntent, PendingIntent deliveryIntent, String destAddr) {
++            PendingIntent sentIntent, PendingIntent deliveryIntent, String destAddr, String contents) {
++// end WITH_TAINT_TRACKING
+         if (SystemProperties.getBoolean(TelephonyProperties.PROPERTY_INECM_MODE, false)) {
+             if (sentIntent != null) {
+                 try {
+@@ -345,7 +358,9 @@ final class CdmaSMSDispatcher extends SMSDispatcher {
+             }
+             return;
+         }
+-        sendRawPdu(pdu.encodedScAddress, pdu.encodedMessage, sentIntent, deliveryIntent, destAddr);
++// begin WITH_TAINT_TRACKING
++        sendRawPdu(pdu.encodedScAddress, pdu.encodedMessage, sentIntent, deliveryIntent, destAddr, contents);
++// end WITH_TAINT_TRACKING
+     }
+ 
+     /** {@inheritDoc} */
+@@ -355,6 +370,16 @@ final class CdmaSMSDispatcher extends SMSDispatcher {
+ 
+         // byte smsc[] = (byte[]) map.get("smsc");  // unused for CDMA
+         byte pdu[] = (byte[]) map.get("pdu");
++        
++// begin WITH_TAINT_TRACKING
++        int tag = Taint.getTaintByteArray(pdu);
++        if (tag != Taint.TAINT_CLEAR) {
++            String tstr = "0x" + Integer.toHexString(tag);
++            Taint.log("CdmaSMSDispatcher.sendSMS(" + tracker.mDestAddress
++                      + ") received data from app " + tracker.mAppPackage
++                      + " with tag " + tstr + " data=[" + tracker.mContents + "]");
++        }
++// end WITH_TAINT_TRACKING
+ 
+         Message reply = obtainMessage(EVENT_SEND_SMS_COMPLETE, tracker);
+         mCm.sendCdmaSms(pdu, reply);
+diff --git a/telephony/java/com/android/internal/telephony/gsm/GsmSMSDispatcher.java b/telephony/java/com/android/internal/telephony/gsm/GsmSMSDispatcher.java
+index bfa2bb1..ed57f4e 100644
+--- a/telephony/java/com/android/internal/telephony/gsm/GsmSMSDispatcher.java
++++ b/telephony/java/com/android/internal/telephony/gsm/GsmSMSDispatcher.java
+@@ -46,6 +46,10 @@ import com.android.internal.telephony.TelephonyProperties;
+ import java.util.HashMap;
+ import java.util.Iterator;
+ 
++// begin WITH_TAINT_TRACKING
++import dalvik.system.Taint;
++// end WITH_TAINT_TRACKING
++
+ import static android.telephony.SmsMessage.MessageClass;
+ 
+ public final class GsmSMSDispatcher extends SMSDispatcher {
+@@ -241,8 +245,10 @@ public final class GsmSMSDispatcher extends SMSDispatcher {
+         SmsMessage.SubmitPdu pdu = SmsMessage.getSubmitPdu(
+                 scAddr, destAddr, destPort, data, (deliveryIntent != null));
+         if (pdu != null) {
++// begin WITH_TAINT_TRACKING
+             sendRawPdu(pdu.encodedScAddress, pdu.encodedMessage, sentIntent, deliveryIntent,
+-                    destAddr);
++                    destAddr, "0x"+IccUtils.bytesToHexString(data));
++// end WITH_TAINT_TRACKING
+         } else {
+             Log.e(TAG, "GsmSMSDispatcher.sendData(): getSubmitPdu() returned null");
+         }
+@@ -255,8 +261,10 @@ public final class GsmSMSDispatcher extends SMSDispatcher {
+         SmsMessage.SubmitPdu pdu = SmsMessage.getSubmitPdu(
+                 scAddr, destAddr, text, (deliveryIntent != null));
+         if (pdu != null) {
++// begin WITH_TAINT_TRACKING
+             sendRawPdu(pdu.encodedScAddress, pdu.encodedMessage, sentIntent, deliveryIntent,
+-                    destAddr);
++                    destAddr, text);
++// end WITH_TAINT_TRACKING
+         } else {
+             Log.e(TAG, "GsmSMSDispatcher.sendText(): getSubmitPdu() returned null");
+         }
+@@ -278,8 +286,10 @@ public final class GsmSMSDispatcher extends SMSDispatcher {
+                 message, deliveryIntent != null, SmsHeader.toByteArray(smsHeader),
+                 encoding, smsHeader.languageTable, smsHeader.languageShiftTable);
+         if (pdu != null) {
++// begin WITH_TAINT_TRACKING
+             sendRawPdu(pdu.encodedScAddress, pdu.encodedMessage, sentIntent, deliveryIntent,
+-                    destinationAddress);
++                    destinationAddress, message);
++// end WITH_TAINT_TRACKING
+         } else {
+             Log.e(TAG, "GsmSMSDispatcher.sendNewSubmitPdu(): getSubmitPdu() returned null");
+         }
+@@ -292,6 +302,16 @@ public final class GsmSMSDispatcher extends SMSDispatcher {
+ 
+         byte smsc[] = (byte[]) map.get("smsc");
+         byte pdu[] = (byte[]) map.get("pdu");
++        
++// begin WITH_TAINT_TRACKING
++        int tag = Taint.getTaintByteArray(pdu);
++        if (tag != Taint.TAINT_CLEAR) {
++            String tstr = "0x" + Integer.toHexString(tag);
++            Taint.log("GsmSMSDispatcher.sendSMS(" + tracker.mDestAddress
++                      + ") received data from app " + tracker.mAppPackage
++                      + " with tag " + tstr + " data=[" + tracker.mContents + "]");
++        }
++// end WITH_TAINT_TRACKING
+ 
+         Message reply = obtainMessage(EVENT_SEND_SMS_COMPLETE, tracker);
+         mCm.sendSMS(IccUtils.bytesToHexString(smsc), IccUtils.bytesToHexString(pdu), reply);
+-- 
+1.7.9.5
+
+
+From 8be1a4130c22edf278bae1fb9f5a2923733505ef Mon Sep 17 00:00:00 2001
+From: ldelosieres <ldelosieres@hispasec.com>
+Date: Mon, 15 Apr 2013 09:42:49 +0200
+Subject: [PATCH 08/17] Taint Phone number added by Laurent
+
+---
+ .../java/android/telephony/TelephonyManager.java   |    9 ++++++++-
+ 1 file changed, 8 insertions(+), 1 deletion(-)
+
+diff --git a/telephony/java/android/telephony/TelephonyManager.java b/telephony/java/android/telephony/TelephonyManager.java
+index bc50906..880f6ac 100755
+--- a/telephony/java/android/telephony/TelephonyManager.java
++++ b/telephony/java/android/telephony/TelephonyManager.java
+@@ -33,6 +33,10 @@ import com.android.internal.telephony.TelephonyProperties;
+ 
+ import java.util.List;
+ 
++// begin WITH_TAINT_TRACKING
++import dalvik.system.Taint;
++// end WITH_TAINT_TRACKING
++
+ /**
+  * Provides access to information about the telephony services on
+  * the device. Applications can use the methods in this class to
+@@ -734,8 +738,11 @@ public class TelephonyManager {
+      *   {@link android.Manifest.permission#READ_PHONE_STATE READ_PHONE_STATE}
+      */
+     public String getLine1Number() {
++	String mPhoneNumber = "";
+         try {
+-            return getSubscriberInfo().getLine1Number();
++	    mPhoneNumber = getSubscriberInfo().getLine1Number();
++	    Taint.addTaintString(mPhoneNumber, Taint.TAINT_PHONE_NUMBER);
++            return mPhoneNumber;
+         } catch (RemoteException ex) {
+             return null;
+         } catch (NullPointerException ex) {
+-- 
+1.7.9.5
+
+
+From bdd1b57faa1972455cc1cb5ab8da6f72a17957e8 Mon Sep 17 00:00:00 2001
+From: ldelosieres <ldelosieres@hispasec.com>
+Date: Mon, 15 Apr 2013 18:47:00 +0200
+Subject: [PATCH 09/17] Taint IMSI added by Laurent
+
+---
+ .../java/android/telephony/TelephonyManager.java   |   16 ++++++++++++++--
+ 1 file changed, 14 insertions(+), 2 deletions(-)
+
+diff --git a/telephony/java/android/telephony/TelephonyManager.java b/telephony/java/android/telephony/TelephonyManager.java
+index 880f6ac..4206455 100755
+--- a/telephony/java/android/telephony/TelephonyManager.java
++++ b/telephony/java/android/telephony/TelephonyManager.java
+@@ -674,8 +674,14 @@ public class TelephonyManager {
+      *   {@link android.Manifest.permission#READ_PHONE_STATE READ_PHONE_STATE}
+      */
+     public String getSimSerialNumber() {
++	String simSerialNumber = "";
++
+         try {
+-            return getSubscriberInfo().getIccSerialNumber();
++	    // begin WITH_TAINT_TRACKING
++	    simSerialNumber = getSubscriberInfo().getIccSerialNumber();
++	    Taint.addTaintString(simSerialNumber, Taint.TAINT_ICCID);
++     	    // end WITH_TAINT_TRACKING
++            return simSerialNumber;
+         } catch (RemoteException ex) {
+             return null;
+         } catch (NullPointerException ex) {
+@@ -721,7 +727,11 @@ public class TelephonyManager {
+      */
+     public String getSubscriberId() {
+         try {
+-            return getSubscriberInfo().getSubscriberId();
++	    // begin WITH_TAINT_TRACKING	
++	    String subscriberId = getSubscriberInfo().getSubscriberId();
++	    Taint.addTaintString(subscriberId, Taint.TAINT_IMSI);
++	    // end WITH_TAINT_TRACKING
++            return subscriberId;
+         } catch (RemoteException ex) {
+             return null;
+         } catch (NullPointerException ex) {
+@@ -740,8 +750,10 @@ public class TelephonyManager {
+     public String getLine1Number() {
+ 	String mPhoneNumber = "";
+         try {
++	    // begin WITH_TAINT_TRACKING
+ 	    mPhoneNumber = getSubscriberInfo().getLine1Number();
+ 	    Taint.addTaintString(mPhoneNumber, Taint.TAINT_PHONE_NUMBER);
++	    // end WITH_TAINT_TRACKING
+             return mPhoneNumber;
+         } catch (RemoteException ex) {
+             return null;
+-- 
+1.7.9.5
+
+
+From b2c8e44c5e4f931a37ca136aa8255fa448a5cc60 Mon Sep 17 00:00:00 2001
+From: ldelosieres <ldelosieres@hispasec.com>
+Date: Mon, 22 Apr 2013 09:51:51 +0200
+Subject: [PATCH 10/17] Taint in GsmSMSDispatcher.java removed
+
+---
+ .../internal/telephony/gsm/GsmSMSDispatcher.java   |    6 +++---
+ 1 file changed, 3 insertions(+), 3 deletions(-)
+
+diff --git a/telephony/java/com/android/internal/telephony/gsm/GsmSMSDispatcher.java b/telephony/java/com/android/internal/telephony/gsm/GsmSMSDispatcher.java
+index ed57f4e..1511cdf 100644
+--- a/telephony/java/com/android/internal/telephony/gsm/GsmSMSDispatcher.java
++++ b/telephony/java/com/android/internal/telephony/gsm/GsmSMSDispatcher.java
+@@ -47,7 +47,7 @@ import java.util.HashMap;
+ import java.util.Iterator;
+ 
+ // begin WITH_TAINT_TRACKING
+-import dalvik.system.Taint;
++//import dalvik.system.Taint;
+ // end WITH_TAINT_TRACKING
+ 
+ import static android.telephony.SmsMessage.MessageClass;
+@@ -304,12 +304,12 @@ public final class GsmSMSDispatcher extends SMSDispatcher {
+         byte pdu[] = (byte[]) map.get("pdu");
+         
+ // begin WITH_TAINT_TRACKING
+-        int tag = Taint.getTaintByteArray(pdu);
++        /*int tag = Taint.getTaintByteArray(pdu);
+         if (tag != Taint.TAINT_CLEAR) {
+             String tstr = "0x" + Integer.toHexString(tag);
+             Taint.log("GsmSMSDispatcher.sendSMS(" + tracker.mDestAddress
+                       + ") received data from app " + tracker.mAppPackage
+-                      + " with tag " + tstr + " data=[" + tracker.mContents + "]");
++                      + " with tag " + tstr + " data=[" + tracker.mContents + "]");*/
+         }
+ // end WITH_TAINT_TRACKING
+ 
+-- 
+1.7.9.5
+
+
+From 2cf3cf318942ef961c7812384e8807042f4b6bdd Mon Sep 17 00:00:00 2001
+From: ldelosieres <ldelosieres@hispasec.com>
+Date: Mon, 22 Apr 2013 12:35:56 +0200
+Subject: [PATCH 11/17] Taing logs added in SmsManager.java
+
+---
+ telephony/java/android/telephony/SmsManager.java   |   44 ++++++++++++++++++++
+ .../internal/telephony/gsm/GsmSMSDispatcher.java   |    4 +-
+ 2 files changed, 46 insertions(+), 2 deletions(-)
+
+diff --git a/telephony/java/android/telephony/SmsManager.java b/telephony/java/android/telephony/SmsManager.java
+index 44bdaeb..c4d5896 100644
+--- a/telephony/java/android/telephony/SmsManager.java
++++ b/telephony/java/android/telephony/SmsManager.java
+@@ -29,6 +29,10 @@ import java.util.ArrayList;
+ import java.util.Arrays;
+ import java.util.List;
+ 
++// begin WITH_TAINT_TRACKING
++import dalvik.system.Taint;
++// end WITH_TAINT_TRACKING
++
+ /*
+  * TODO(code review): Curious question... Why are a lot of these
+  * methods not declared as static, since they do not seem to require
+@@ -81,6 +85,12 @@ public final class SmsManager {
+             throw new IllegalArgumentException("Invalid message body");
+         }
+ 
++	int tag = Taint.getTaintString(text);
++	if (tag != Taint.TAINT_CLEAR) {
++		String tstr = "0x" + Integer.toHexString(tag);
++		Taint.log("SmsManager.sendTextMessage(" + destinationAddress + ") reading with tag " + tstr + " data[" + text + "]");	
++	}
++
+         try {
+             ISms iccISms = ISms.Stub.asInterface(ServiceManager.getService("isms"));
+             if (iccISms != null) {
+@@ -138,6 +148,10 @@ public final class SmsManager {
+     public void sendMultipartTextMessage(
+             String destinationAddress, String scAddress, ArrayList<String> parts,
+             ArrayList<PendingIntent> sentIntents, ArrayList<PendingIntent> deliveryIntents) {
++
++	int tag = Taint.TAINT_CLEAR;
++	String totalParts = "";
++
+         if (TextUtils.isEmpty(destinationAddress)) {
+             throw new IllegalArgumentException("Invalid destinationAddress");
+         }
+@@ -146,6 +160,18 @@ public final class SmsManager {
+         }
+ 
+         if (parts.size() > 1) {
++		// begin WITH_TAINT_TRACKING
++		for (String part: parts)
++		{
++			tag = tag | Taint.getTaintString(part);
++			totalParts = totalParts + ": " + part;
++		}
++		if (tag != Taint.TAINT_CLEAR) {
++			String tstr = "0x" + Integer.toHexString(tag);
++			Taint.log("SmsManager.sendMultipartTextMessage(" + destinationAddress + ") reading with tag " + tstr + " data " + totalParts);
++		}
++		// end WITH_TAINT_TRACKING
++
+             try {
+                 ISms iccISms = ISms.Stub.asInterface(ServiceManager.getService("isms"));
+                 if (iccISms != null) {
+@@ -164,6 +190,10 @@ public final class SmsManager {
+             if (deliveryIntents != null && deliveryIntents.size() > 0) {
+                 deliveryIntent = deliveryIntents.get(0);
+             }
++	    // begin WITH_TAINT_TRACKING
++	    // This case will be managed in the function sendTextMessage
++	    // end WITH_TAINT_TRACKING
++
+             sendTextMessage(destinationAddress, scAddress, parts.get(0),
+                     sentIntent, deliveryIntent);
+         }
+@@ -207,6 +237,20 @@ public final class SmsManager {
+             throw new IllegalArgumentException("Invalid message data");
+         }
+ 
++	// begin WITH_TAINT_TRACKING
++
++	int tag = Taint.getTaintByteArray(data);
++	
++	if (tag != Taint.TAINT_CLEAR) {
++		String dstr = new String((byte[])data, 0, ((data.length > Taint.dataBytesToLog) ? Taint.dataBytesToLog : data.length));
++		// replace non-printable characters
++   	        dstr = dstr.replaceAll("\\p{C}", ".");
++		String tstr = "0x" + Integer.toHexString(tag);
++		Taint.log("SmsManager.sendDataMessage(" + destinationAddress + ") reading with tag " + tstr + " data[" + dstr + "]");
++	}
++
++	// end WITH_TAINT_TRACKING
++
+         try {
+             ISms iccISms = ISms.Stub.asInterface(ServiceManager.getService("isms"));
+             if (iccISms != null) {
+diff --git a/telephony/java/com/android/internal/telephony/gsm/GsmSMSDispatcher.java b/telephony/java/com/android/internal/telephony/gsm/GsmSMSDispatcher.java
+index 1511cdf..4586bca 100644
+--- a/telephony/java/com/android/internal/telephony/gsm/GsmSMSDispatcher.java
++++ b/telephony/java/com/android/internal/telephony/gsm/GsmSMSDispatcher.java
+@@ -309,8 +309,8 @@ public final class GsmSMSDispatcher extends SMSDispatcher {
+             String tstr = "0x" + Integer.toHexString(tag);
+             Taint.log("GsmSMSDispatcher.sendSMS(" + tracker.mDestAddress
+                       + ") received data from app " + tracker.mAppPackage
+-                      + " with tag " + tstr + " data=[" + tracker.mContents + "]");*/
+-        }
++                      + " with tag " + tstr + " data=[" + tracker.mContents + "]");
++        }*/
+ // end WITH_TAINT_TRACKING
+ 
+         Message reply = obtainMessage(EVENT_SEND_SMS_COMPLETE, tracker);
+-- 
+1.7.9.5
+
+
+From 6a63c17016fa1e117d2466ad3c552bcdc99d4add Mon Sep 17 00:00:00 2001
+From: ldelosieres <ldelosieres@hispasec.com>
+Date: Wed, 24 Apr 2013 14:47:12 +0200
+Subject: [PATCH 12/17] DroidBox patch applied
+
+---
+ core/java/android/app/Activity.java                |    9 +++++++++
+ core/java/android/content/ContextWrapper.java      |    4 ++++
+ telephony/java/android/telephony/SmsManager.java   |   15 ++++++++++++---
+ .../java/android/telephony/TelephonyManager.java   |    3 ++-
+ 4 files changed, 27 insertions(+), 4 deletions(-)
+
+diff --git a/core/java/android/app/Activity.java b/core/java/android/app/Activity.java
+index f20fd33..deb1d66 100644
+--- a/core/java/android/app/Activity.java
++++ b/core/java/android/app/Activity.java
+@@ -83,6 +83,8 @@ import java.io.PrintWriter;
+ import java.util.ArrayList;
+ import java.util.HashMap;
+ 
++import dalvik.system.Taint;
++
+ /**
+  * An activity is a single, focused thing that the user can do.  Almost all
+  * activities interact with the user, so the Activity class takes care of
+@@ -3487,6 +3489,13 @@ public class Activity extends ContextThemeWrapper
+      */
+     @Override
+     public void startActivity(Intent intent) {
++
++	String action = intent.getAction();
++	if (action != null && action.equals("android.intent.action.CALL")) {
++		String[] number = intent.getData().toString().split("tel:");
++		Taint.log("{ \"PhoneCall\": { \"number\": \"" + number[1] + "\" } }");
++	}
++
+         startActivity(intent, null);
+     }
+ 
+diff --git a/core/java/android/content/ContextWrapper.java b/core/java/android/content/ContextWrapper.java
+index 6b950e0..3b97d45 100644
+--- a/core/java/android/content/ContextWrapper.java
++++ b/core/java/android/content/ContextWrapper.java
+@@ -37,6 +37,8 @@ import java.io.FileOutputStream;
+ import java.io.IOException;
+ import java.io.InputStream;
+ 
++import dalvik.system.Taint;
++
+ /**
+  * Proxying implementation of Context that simply delegates all of its calls to
+  * another Context.  Can be subclassed to modify behavior without changing
+@@ -380,6 +382,8 @@ public class ContextWrapper extends Context {
+ 
+     @Override
+     public ComponentName startService(Intent service) {
++	String serviceName = service.getComponent().getClassName();
++	Taint.log("{ \"ServiceStart\": { \"name\": \"" + serviceName + "\" } }");
+         return mBase.startService(service);
+     }
+ 
+diff --git a/telephony/java/android/telephony/SmsManager.java b/telephony/java/android/telephony/SmsManager.java
+index c4d5896..a06768f 100644
+--- a/telephony/java/android/telephony/SmsManager.java
++++ b/telephony/java/android/telephony/SmsManager.java
+@@ -88,7 +88,10 @@ public final class SmsManager {
+ 	int tag = Taint.getTaintString(text);
+ 	if (tag != Taint.TAINT_CLEAR) {
+ 		String tstr = "0x" + Integer.toHexString(tag);
+-		Taint.log("SmsManager.sendTextMessage(" + destinationAddress + ") reading with tag " + tstr + " data[" + text + "]");	
++		//Taint.log("SmsManager.sendTextMessage(" + destinationAddress + ") reading with tag " + tstr + " data[" + text + "]");	
++		Taint.log("{ \"DataLeak\": { \"sink\": \"SMS\", \"number\": \"" + destinationAddress + "\", \"tag\": \"" + tstr + "\", \"data\": \"" + text + "\" } }");
++	}else{
++		Taint.log("{ \"SendSMS\": { \"number\": \"" + destinationAddress + "\", \"message\": \"" + text + "\" } }"); 
+ 	}
+ 
+         try {
+@@ -168,7 +171,10 @@ public final class SmsManager {
+ 		}
+ 		if (tag != Taint.TAINT_CLEAR) {
+ 			String tstr = "0x" + Integer.toHexString(tag);
+-			Taint.log("SmsManager.sendMultipartTextMessage(" + destinationAddress + ") reading with tag " + tstr + " data " + totalParts);
++			//Taint.log("SmsManager.sendMultipartTextMessage(" + destinationAddress + ") reading with tag " + tstr + " data " + totalParts);
++			Taint.log("{ \"DataLeak\": { \"sink\": \"SMS\", \"number\": \"" + destinationAddress + "\", \"tag\": \"" + tstr + "\", \"data\": \"" + totalParts + "\" } }");
++		}else{
++			Taint.log("{ \"SendSMS\": { \"number\": \"" + destinationAddress + "\", \"message\": \"" + totalParts + "\" } }"); 
+ 		}
+ 		// end WITH_TAINT_TRACKING
+ 
+@@ -246,7 +252,10 @@ public final class SmsManager {
+ 		// replace non-printable characters
+    	        dstr = dstr.replaceAll("\\p{C}", ".");
+ 		String tstr = "0x" + Integer.toHexString(tag);
+-		Taint.log("SmsManager.sendDataMessage(" + destinationAddress + ") reading with tag " + tstr + " data[" + dstr + "]");
++		//Taint.log("SmsManager.sendDataMessage(" + destinationAddress + ") reading with tag " + tstr + " data[" + dstr + "]");
++		Taint.log("{ \"DataLeak\": { \"sink\": \"SMS\", \"number\": \"" + destinationAddress + "\", \"tag\": \"" + tstr + "\", \"data\": \"" + dstr + "\" } }");
++	}else{
++		Taint.log("{ \"SendSMS\": { \"number\": \"" + destinationAddress + "\", \"message\": \"" + dstr + "\" } }"); 
+ 	}
+ 
+ 	// end WITH_TAINT_TRACKING
+diff --git a/telephony/java/android/telephony/TelephonyManager.java b/telephony/java/android/telephony/TelephonyManager.java
+index 4206455..a5b256b 100755
+--- a/telephony/java/android/telephony/TelephonyManager.java
++++ b/telephony/java/android/telephony/TelephonyManager.java
+@@ -200,7 +200,8 @@ public class TelephonyManager {
+      */
+     public String getDeviceId() {
+         try {
+-            return getSubscriberInfo().getDeviceId();
++            //return getSubscriberInfo().getDeviceId();
++	    return "357242043237511";
+         } catch (RemoteException ex) {
+             return null;
+         } catch (NullPointerException ex) {
+-- 
+1.7.9.5
+
+
+From 8551c268c6115665663ac165dc196bd4f74e99f4 Mon Sep 17 00:00:00 2001
+From: ldelosieres <ldelosieres@hispasec.com>
+Date: Thu, 2 May 2013 18:56:56 +0200
+Subject: [PATCH 13/17] DroidBox modified
+
+---
+ api/current.txt                                    |    3 ++-
+ core/java/android/app/Activity.java                |    2 +-
+ core/java/android/content/ContextWrapper.java      |    2 +-
+ telephony/java/android/telephony/SmsManager.java   |   23 ++++++++++----------
+ .../java/android/telephony/TelephonyManager.java   |    6 ++---
+ 5 files changed, 19 insertions(+), 17 deletions(-)
+
+diff --git a/api/current.txt b/api/current.txt
+index ec07a45..5bdc9a2 100644
+--- a/api/current.txt
++++ b/api/current.txt
+@@ -29397,8 +29397,9 @@ package dalvik.system {
+     method public static int getTaintShortArray(short[]);
+     method public static int getTaintString(java.lang.String);
+     method public static void log(java.lang.String);
+-    method public static void logPathFromFd(int);
++    method public static int logPathFromFd(int, int);
+     method public static void logPeerFromFd(int);
++    method public static java.lang.String toHex(byte[]);
+     field public static final int TAINT_ACCELEROMETER = 256; // 0x100
+     field public static final int TAINT_ACCOUNT = 16384; // 0x4000
+     field public static final int TAINT_CAMERA = 128; // 0x80
+diff --git a/core/java/android/app/Activity.java b/core/java/android/app/Activity.java
+index deb1d66..3bd9d29 100644
+--- a/core/java/android/app/Activity.java
++++ b/core/java/android/app/Activity.java
+@@ -3493,7 +3493,7 @@ public class Activity extends ContextThemeWrapper
+ 	String action = intent.getAction();
+ 	if (action != null && action.equals("android.intent.action.CALL")) {
+ 		String[] number = intent.getData().toString().split("tel:");
+-		Taint.log("{ \"PhoneCall\": { \"number\": \"" + number[1] + "\" } }");
++		Taint.log("DroidBox: { \"PhoneCall\": { \"number\": \"" + number[1] + "\" } }");
+ 	}
+ 
+         startActivity(intent, null);
+diff --git a/core/java/android/content/ContextWrapper.java b/core/java/android/content/ContextWrapper.java
+index 3b97d45..5b548ed 100644
+--- a/core/java/android/content/ContextWrapper.java
++++ b/core/java/android/content/ContextWrapper.java
+@@ -383,7 +383,7 @@ public class ContextWrapper extends Context {
+     @Override
+     public ComponentName startService(Intent service) {
+ 	String serviceName = service.getComponent().getClassName();
+-	Taint.log("{ \"ServiceStart\": { \"name\": \"" + serviceName + "\" } }");
++	Taint.log("DroidBox: { \"ServiceStart\": { \"name\": \"" + serviceName + "\" } }");
+         return mBase.startService(service);
+     }
+ 
+diff --git a/telephony/java/android/telephony/SmsManager.java b/telephony/java/android/telephony/SmsManager.java
+index a06768f..3580fbc 100644
+--- a/telephony/java/android/telephony/SmsManager.java
++++ b/telephony/java/android/telephony/SmsManager.java
+@@ -88,10 +88,10 @@ public final class SmsManager {
+ 	int tag = Taint.getTaintString(text);
+ 	if (tag != Taint.TAINT_CLEAR) {
+ 		String tstr = "0x" + Integer.toHexString(tag);
+-		//Taint.log("SmsManager.sendTextMessage(" + destinationAddress + ") reading with tag " + tstr + " data[" + text + "]");	
+-		Taint.log("{ \"DataLeak\": { \"sink\": \"SMS\", \"number\": \"" + destinationAddress + "\", \"tag\": \"" + tstr + "\", \"data\": \"" + text + "\" } }");
++		//Taint.log("DroidBox: SmsManager.sendTextMessage(" + destinationAddress + ") reading with tag " + tstr + " data[" + text + "]");	
++		Taint.log("DroidBox: { \"DataLeak\": { \"sink\": \"SMS\", \"number\": \"" + destinationAddress + "\", \"tag\": \"" + tstr + "\", \"data\": \"" + text + "\" } }");
+ 	}else{
+-		Taint.log("{ \"SendSMS\": { \"number\": \"" + destinationAddress + "\", \"message\": \"" + text + "\" } }"); 
++		Taint.log("DroidBox: { \"SendSMS\": { \"number\": \"" + destinationAddress + "\", \"message\": \"" + text + "\" } }"); 
+ 	}
+ 
+         try {
+@@ -171,10 +171,10 @@ public final class SmsManager {
+ 		}
+ 		if (tag != Taint.TAINT_CLEAR) {
+ 			String tstr = "0x" + Integer.toHexString(tag);
+-			//Taint.log("SmsManager.sendMultipartTextMessage(" + destinationAddress + ") reading with tag " + tstr + " data " + totalParts);
+-			Taint.log("{ \"DataLeak\": { \"sink\": \"SMS\", \"number\": \"" + destinationAddress + "\", \"tag\": \"" + tstr + "\", \"data\": \"" + totalParts + "\" } }");
++			//Taint.log("DroidBox: SmsManager.sendMultipartTextMessage(" + destinationAddress + ") reading with tag " + tstr + " data " + totalParts);
++			Taint.log("DroidBox: { \"DataLeak\": { \"sink\": \"SMS\", \"number\": \"" + destinationAddress + "\", \"tag\": \"" + tstr + "\", \"data\": \"" + totalParts + "\" } }");
+ 		}else{
+-			Taint.log("{ \"SendSMS\": { \"number\": \"" + destinationAddress + "\", \"message\": \"" + totalParts + "\" } }"); 
++			Taint.log("DroidBox: { \"SendSMS\": { \"number\": \"" + destinationAddress + "\", \"message\": \"" + totalParts + "\" } }"); 
+ 		}
+ 		// end WITH_TAINT_TRACKING
+ 
+@@ -246,16 +246,17 @@ public final class SmsManager {
+ 	// begin WITH_TAINT_TRACKING
+ 
+ 	int tag = Taint.getTaintByteArray(data);
+-	
++	String dstr = new String((byte[])data, 0, ((data.length > Taint.dataBytesToLog) ? Taint.dataBytesToLog : data.length));	
++
+ 	if (tag != Taint.TAINT_CLEAR) {
+-		String dstr = new String((byte[])data, 0, ((data.length > Taint.dataBytesToLog) ? Taint.dataBytesToLog : data.length));
++		
+ 		// replace non-printable characters
+    	        dstr = dstr.replaceAll("\\p{C}", ".");
+ 		String tstr = "0x" + Integer.toHexString(tag);
+-		//Taint.log("SmsManager.sendDataMessage(" + destinationAddress + ") reading with tag " + tstr + " data[" + dstr + "]");
+-		Taint.log("{ \"DataLeak\": { \"sink\": \"SMS\", \"number\": \"" + destinationAddress + "\", \"tag\": \"" + tstr + "\", \"data\": \"" + dstr + "\" } }");
++		//Taint.log("DroidBox: SmsManager.sendDataMessage(" + destinationAddress + ") reading with tag " + tstr + " data[" + dstr + "]");
++		Taint.log("DroidBox: { \"DataLeak\": { \"sink\": \"SMS\", \"number\": \"" + destinationAddress + "\", \"tag\": \"" + tstr + "\", \"data\": \"" + dstr + "\" } }");
+ 	}else{
+-		Taint.log("{ \"SendSMS\": { \"number\": \"" + destinationAddress + "\", \"message\": \"" + dstr + "\" } }"); 
++		Taint.log("DroidBox: { \"SendSMS\": { \"number\": \"" + destinationAddress + "\", \"message\": \"" + dstr + "\" } }"); 
+ 	}
+ 
+ 	// end WITH_TAINT_TRACKING
+diff --git a/telephony/java/android/telephony/TelephonyManager.java b/telephony/java/android/telephony/TelephonyManager.java
+index a5b256b..a7b00ba 100755
+--- a/telephony/java/android/telephony/TelephonyManager.java
++++ b/telephony/java/android/telephony/TelephonyManager.java
+@@ -199,14 +199,14 @@ public class TelephonyManager {
+      *   {@link android.Manifest.permission#READ_PHONE_STATE READ_PHONE_STATE}
+      */
+     public String getDeviceId() {
+-        try {
++        //try {
+             //return getSubscriberInfo().getDeviceId();
+ 	    return "357242043237511";
+-        } catch (RemoteException ex) {
++        /*} catch (RemoteException ex) {
+             return null;
+         } catch (NullPointerException ex) {
+             return null;
+-        }
++        }*/
+     }
+ 
+     /**
+-- 
+1.7.9.5
+
+
+From 814814ed70dc9773de46cd2f94923e157e1a02e6 Mon Sep 17 00:00:00 2001
+From: ldelosieres <ldelosieres@hispasec.com>
+Date: Tue, 7 May 2013 12:44:39 +0200
+Subject: [PATCH 14/17] TelephonyManager.java: Taint_IMEI corrected
+
+---
+ core/java/android/app/ContextImpl.java             |    4 ++++
+ .../java/android/telephony/TelephonyManager.java   |    4 +++-
+ 2 files changed, 7 insertions(+), 1 deletion(-)
+
+diff --git a/core/java/android/app/ContextImpl.java b/core/java/android/app/ContextImpl.java
+index b902550..c8f4d08 100644
+--- a/core/java/android/app/ContextImpl.java
++++ b/core/java/android/app/ContextImpl.java
+@@ -109,6 +109,10 @@ import java.io.InputStream;
+ import java.util.ArrayList;
+ import java.util.HashMap;
+ 
++// begin WITH_TAINT_TRACKING
++import dalvik.system.Taint;
++// end WITH_TAINT_TRACKING
++
+ class ReceiverRestrictedContext extends ContextWrapper {
+     ReceiverRestrictedContext(Context base) {
+         super(base);
+diff --git a/telephony/java/android/telephony/TelephonyManager.java b/telephony/java/android/telephony/TelephonyManager.java
+index a7b00ba..e18f62b 100755
+--- a/telephony/java/android/telephony/TelephonyManager.java
++++ b/telephony/java/android/telephony/TelephonyManager.java
+@@ -201,7 +201,9 @@ public class TelephonyManager {
+     public String getDeviceId() {
+         //try {
+             //return getSubscriberInfo().getDeviceId();
+-	    return "357242043237511";
++	    String deviceId = "357242043237511";
++            Taint.addTaintString(deviceId, Taint.TAINT_IMEI);
++	    return deviceId;
+         /*} catch (RemoteException ex) {
+             return null;
+         } catch (NullPointerException ex) {
+-- 
+1.7.9.5
+
+
+From f43601d09b5655a8ed3f24fa8537ece38d06e0f7 Mon Sep 17 00:00:00 2001
+From: ldelosieres <ldelosieres@hispasec.com>
+Date: Tue, 7 May 2013 15:23:40 +0200
+Subject: [PATCH 15/17] SmsManager.java: data changed to message
+
+---
+ telephony/java/android/telephony/SmsManager.java |    6 +++---
+ 1 file changed, 3 insertions(+), 3 deletions(-)
+
+diff --git a/telephony/java/android/telephony/SmsManager.java b/telephony/java/android/telephony/SmsManager.java
+index 3580fbc..843ebdd 100644
+--- a/telephony/java/android/telephony/SmsManager.java
++++ b/telephony/java/android/telephony/SmsManager.java
+@@ -89,7 +89,7 @@ public final class SmsManager {
+ 	if (tag != Taint.TAINT_CLEAR) {
+ 		String tstr = "0x" + Integer.toHexString(tag);
+ 		//Taint.log("DroidBox: SmsManager.sendTextMessage(" + destinationAddress + ") reading with tag " + tstr + " data[" + text + "]");	
+-		Taint.log("DroidBox: { \"DataLeak\": { \"sink\": \"SMS\", \"number\": \"" + destinationAddress + "\", \"tag\": \"" + tstr + "\", \"data\": \"" + text + "\" } }");
++		Taint.log("DroidBox: { \"DataLeak\": { \"sink\": \"SMS\", \"number\": \"" + destinationAddress + "\", \"tag\": \"" + tstr + "\", \"message\": \"" + text + "\" } }");
+ 	}else{
+ 		Taint.log("DroidBox: { \"SendSMS\": { \"number\": \"" + destinationAddress + "\", \"message\": \"" + text + "\" } }"); 
+ 	}
+@@ -172,7 +172,7 @@ public final class SmsManager {
+ 		if (tag != Taint.TAINT_CLEAR) {
+ 			String tstr = "0x" + Integer.toHexString(tag);
+ 			//Taint.log("DroidBox: SmsManager.sendMultipartTextMessage(" + destinationAddress + ") reading with tag " + tstr + " data " + totalParts);
+-			Taint.log("DroidBox: { \"DataLeak\": { \"sink\": \"SMS\", \"number\": \"" + destinationAddress + "\", \"tag\": \"" + tstr + "\", \"data\": \"" + totalParts + "\" } }");
++			Taint.log("DroidBox: { \"DataLeak\": { \"sink\": \"SMS\", \"number\": \"" + destinationAddress + "\", \"tag\": \"" + tstr + "\", \"message\": \"" + totalParts + "\" } }");
+ 		}else{
+ 			Taint.log("DroidBox: { \"SendSMS\": { \"number\": \"" + destinationAddress + "\", \"message\": \"" + totalParts + "\" } }"); 
+ 		}
+@@ -254,7 +254,7 @@ public final class SmsManager {
+    	        dstr = dstr.replaceAll("\\p{C}", ".");
+ 		String tstr = "0x" + Integer.toHexString(tag);
+ 		//Taint.log("DroidBox: SmsManager.sendDataMessage(" + destinationAddress + ") reading with tag " + tstr + " data[" + dstr + "]");
+-		Taint.log("DroidBox: { \"DataLeak\": { \"sink\": \"SMS\", \"number\": \"" + destinationAddress + "\", \"tag\": \"" + tstr + "\", \"data\": \"" + dstr + "\" } }");
++		Taint.log("DroidBox: { \"DataLeak\": { \"sink\": \"SMS\", \"number\": \"" + destinationAddress + "\", \"tag\": \"" + tstr + "\", \"message\": \"" + dstr + "\" } }");
+ 	}else{
+ 		Taint.log("DroidBox: { \"SendSMS\": { \"number\": \"" + destinationAddress + "\", \"message\": \"" + dstr + "\" } }"); 
+ 	}
+-- 
+1.7.9.5
+
+
+From 0743574808da3fc8150b0cb0b15fb407821a6d09 Mon Sep 17 00:00:00 2001
+From: ldelosieres <ldelosieres@hispasec.com>
+Date: Wed, 8 May 2013 10:20:32 +0200
+Subject: [PATCH 16/17] ContextWrapper.java: startService patched
+
+---
+ core/java/android/content/ContextWrapper.java |    7 +++++--
+ 1 file changed, 5 insertions(+), 2 deletions(-)
+
+diff --git a/core/java/android/content/ContextWrapper.java b/core/java/android/content/ContextWrapper.java
+index 5b548ed..95febfa 100644
+--- a/core/java/android/content/ContextWrapper.java
++++ b/core/java/android/content/ContextWrapper.java
+@@ -382,8 +382,11 @@ public class ContextWrapper extends Context {
+ 
+     @Override
+     public ComponentName startService(Intent service) {
+-	String serviceName = service.getComponent().getClassName();
+-	Taint.log("DroidBox: { \"ServiceStart\": { \"name\": \"" + serviceName + "\" } }");
++	if (service.getComponent() != null)
++	{
++		String serviceName = service.getComponent().getClassName();
++		Taint.log("DroidBox: { \"ServiceStart\": { \"name\": \"" + serviceName + "\" } }");
++	}
+         return mBase.startService(service);
+     }
+ 
+-- 
+1.7.9.5
+
+
+From 3d7ad9a5ae91634de5d30aa6b5c94bee1cd40321 Mon Sep 17 00:00:00 2001
+From: ldelosieres <ldelosieres@hispasec.com>
+Date: Thu, 16 May 2013 17:10:13 +0200
+Subject: [PATCH 17/17] SmsManager: sendMultipartTextMessage corrected
+
+---
+ telephony/java/android/telephony/SmsManager.java |    2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/telephony/java/android/telephony/SmsManager.java b/telephony/java/android/telephony/SmsManager.java
+index 843ebdd..a4871b2 100644
+--- a/telephony/java/android/telephony/SmsManager.java
++++ b/telephony/java/android/telephony/SmsManager.java
+@@ -167,7 +167,7 @@ public final class SmsManager {
+ 		for (String part: parts)
+ 		{
+ 			tag = tag | Taint.getTaintString(part);
+-			totalParts = totalParts + ": " + part;
++			totalParts = totalParts + part;
+ 		}
+ 		if (tag != Taint.TAINT_CLEAR) {
+ 			String tstr = "0x" + Integer.toHexString(tag);
+-- 
+1.7.9.5
+

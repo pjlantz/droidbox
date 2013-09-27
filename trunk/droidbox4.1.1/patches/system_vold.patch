@@ -1,0 +1,178 @@
+From 6f2ee52f2c609aae274c53c11ee07be33530471b Mon Sep 17 00:00:00 2001
+From: Peter Gilbert <petergilbert@gmail.com>
+Date: Fri, 5 Oct 2012 17:07:12 -0700
+Subject: [PATCH 1/2] support for mounting ext4-formatted sdcard
+
+---
+ Ext4.cpp   |   16 ++++++++++++++++
+ Ext4.h     |    7 +++++++
+ Volume.cpp |   20 ++++++++++++++++++++
+ Volume.h   |    4 ++++
+ 4 files changed, 47 insertions(+)
+
+diff --git a/Ext4.cpp b/Ext4.cpp
+index 290489e..d719731 100644
+--- a/Ext4.cpp
++++ b/Ext4.cpp
+@@ -44,6 +44,14 @@
+ 
+ extern "C" int logwrap(int argc, const char **argv, int background);
+ 
++#ifdef TAINT_EXT4
++int Ext4::check(const char *fsPath) {
++    bool rw = true;
++    SLOGE("Check SKIPPED (check not yet implemented in ext4)");
++    //@@@ Need e2fsck
++    return 0;
++}
++#endif /*TAINT_EXT4*/
+ 
+ int Ext4::doMount(const char *fsPath, const char *mountPoint, bool ro, bool remount,
+         bool executable) {
+@@ -56,12 +64,20 @@ int Ext4::doMount(const char *fsPath, const char *mountPoint, bool ro, bool remo
+     flags |= (ro ? MS_RDONLY : 0);
+     flags |= (remount ? MS_REMOUNT : 0);
+ 
++#ifdef TAINT_EXT4
++    rc = mount(fsPath, mountPoint, "ext4", flags, "user_xattr");
++#else
+     rc = mount(fsPath, mountPoint, "ext4", flags, NULL);
++#endif /*TAINT_EXT4*/
+ 
+     if (rc && errno == EROFS) {
+         SLOGE("%s appears to be a read only filesystem - retrying mount RO", fsPath);
+         flags |= MS_RDONLY;
++#ifdef TAINT_EXT4
++        rc = mount(fsPath, mountPoint, "ext4", flags, "user_xattr");
++#else
+         rc = mount(fsPath, mountPoint, "ext4", flags, NULL);
++#endif /*TAINT_EXT4*/
+     }
+ 
+     return rc;
+diff --git a/Ext4.h b/Ext4.h
+index a09b576..2c2a776 100644
+--- a/Ext4.h
++++ b/Ext4.h
+@@ -17,10 +17,17 @@
+ #ifndef _EXT4_H
+ #define _EXT4_H
+ 
++// begin WITH_TAINT_TRACKING
++#define TAINT_EXT4
++// end WITH_TAINT_TRACKING
++
+ #include <unistd.h>
+ 
+ class Ext4 {
+ public:
++#ifdef TAINT_EXT4
++    static int check(const char *fsPath);
++#endif /*TAINT_EXT4*/
+     static int doMount(const char *fsPath, const char *mountPoint, bool ro, bool remount,
+             bool executable);
+     static int format(const char *fsPath);
+diff --git a/Volume.cpp b/Volume.cpp
+index a71000e..3a57d55 100644
+--- a/Volume.cpp
++++ b/Volume.cpp
+@@ -44,6 +44,9 @@
+ #include "VolumeManager.h"
+ #include "ResponseCode.h"
+ #include "Fat.h"
++#ifdef TAINT_EXT4
++#include "Ext4.h"
++#endif /*TAINT_EXT4*/
+ #include "Process.h"
+ #include "cryptfs.h"
+ 
+@@ -398,9 +401,17 @@ int Volume::mountVol() {
+         errno = 0;
+         setState(Volume::State_Checking);
+ 
++#ifdef TAINT_EXT4
++        if (Fat::check(devicePath) && Ext4::check(devicePath)) {
++#else
+         if (Fat::check(devicePath)) {
++#endif /*TAINT_EXT4*/
+             if (errno == ENODATA) {
++#ifdef TAINT_EXT4
++                SLOGW("%s does not contain a FAT or ext4 filesystem\n", devicePath);
++#else
+                 SLOGW("%s does not contain a FAT filesystem\n", devicePath);
++#endif /*TAINT_EXT4*/
+                 continue;
+             }
+             errno = EIO;
+@@ -425,11 +436,20 @@ int Volume::mountVol() {
+             // For secondary external storage we keep things locked up.
+             gid = AID_MEDIA_RW;
+         }
++#ifdef TAINT_EXT4
++        if (Fat::doMount(devicePath, "/mnt/secure/staging", false, false, false,
++                AID_SYSTEM, gid, 0702, true)
++            && Ext4::doMount(devicePath, "/mnt/secure/staging", false, false, false)) {
++            SLOGE("%s failed to mount via VFAT or EXT4 (%s)\n", devicePath, strerror(errno));
++            continue;
++        }
++#else
+         if (Fat::doMount(devicePath, "/mnt/secure/staging", false, false, false,
+                 AID_SYSTEM, gid, 0702, true)) {
+             SLOGE("%s failed to mount via VFAT (%s)\n", devicePath, strerror(errno));
+             continue;
+         }
++#endif /*TAINT_EXT4*/
+ 
+         SLOGI("Device %s, target %s mounted @ /mnt/secure/staging", devicePath, getMountpoint());
+ 
+diff --git a/Volume.h b/Volume.h
+index c717d4d..c236ddd 100644
+--- a/Volume.h
++++ b/Volume.h
+@@ -17,6 +17,10 @@
+ #ifndef _VOLUME_H
+ #define _VOLUME_H
+ 
++// begin WITH_TAINT_TRACKING
++#define TAINT_EXT4
++// end WITH_TAINT_TRACKING
++
+ #include <utils/List.h>
+ 
+ class NetlinkEvent;
+-- 
+1.7.9.5
+
+
+From d9e51888981b55d613e78333e9193ff5d43dc946 Mon Sep 17 00:00:00 2001
+From: Peter Gilbert <petergilbert@gmail.com>
+Date: Fri, 5 Oct 2012 17:58:41 -0700
+Subject: [PATCH 2/2] chmod ext4 sdcard to 777 for fat compatibility
+
+---
+ Ext4.cpp |    9 +++++++++
+ 1 file changed, 9 insertions(+)
+
+diff --git a/Ext4.cpp b/Ext4.cpp
+index d719731..c4fc39a 100644
+--- a/Ext4.cpp
++++ b/Ext4.cpp
+@@ -79,6 +79,15 @@ int Ext4::doMount(const char *fsPath, const char *mountPoint, bool ro, bool remo
+         rc = mount(fsPath, mountPoint, "ext4", flags, NULL);
+ #endif /*TAINT_EXT4*/
+     }
++    
++#ifdef TAINT_EXT4
++    // Chmod the mount point so that its a free-for-all.
++    // (required for consistency with VFAT.. sigh)
++    if (chmod(mountPoint, 0777) < 0) {
++        SLOGE("Failed to chmod %s (%s)", mountPoint, strerror(errno));
++        return -errno;
++    }
++#endif /*TAINT_EXT4*/
+ 
+     return rc;
+ }
+-- 
+1.7.9.5
+

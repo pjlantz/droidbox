@@ -1,0 +1,27 @@
+From 56019b3f12f65c09eb53b870c72b08c7bb6d8c83 Mon Sep 17 00:00:00 2001
+From: Peter Gilbert <petergilbert@gmail.com>
+Date: Mon, 1 Oct 2012 13:01:06 -0400
+Subject: [PATCH] initial commit of TaintDroid 4.1.1_r6
+
+---
+ fstab.herring |    6 +++++-
+ 1 file changed, 5 insertions(+), 1 deletion(-)
+
+diff --git a/fstab.herring b/fstab.herring
+index 0eca316..5bc16f5 100644
+--- a/fstab.herring
++++ b/fstab.herring
+@@ -5,5 +5,9 @@
+ 
+ 
+ /dev/block/platform/s3c-sdhci.0/by-name/system          /system             ext4      ro                                                    wait
+-/dev/block/platform/s3c-sdhci.0/by-name/userdata        /data               ext4      noatime,nosuid,nodev,nomblk_io_submit,errors=panic    wait,encryptable=/efs/userdata_footer
++# begin WITH_TAINT_TRACKING
++#/dev/block/platform/s3c-sdhci.0/by-name/userdata        /data               ext4      noatime,nosuid,nodev,nomblk_io_submit,errors=panic    wait,encryptable=/efs/userdata_footer
++/dev/block/platform/s3c-sdhci.0/by-name/userdata        /data               ext4      noatime,nosuid,nodev,nomblk_io_submit,errors=panic,user_xattr    wait,encryptable=/efs/userdata_footer
++# end WITH_TAINT_TRACKING
++
+ 
+-- 
+1.7.9.5
+
