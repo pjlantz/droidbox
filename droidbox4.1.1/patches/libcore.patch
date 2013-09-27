@@ -1,0 +1,4224 @@
+From e533bbf998d1ec4382cf2f639f3b80a58bf003fb Mon Sep 17 00:00:00 2001
+From: Peter Gilbert <petergilbert@gmail.com>
+Date: Mon, 1 Oct 2012 13:05:06 -0400
+Subject: [PATCH 01/18] initial commit of TaintDroid 4.1.1_r6
+
+---
+ JavaLibrary.mk                                     |    5 +
+ NativeCode.mk                                      |    5 +
+ dalvik/src/main/java/dalvik/system/Taint.java      |  455 ++++++++++++++++++++
+ luni/src/main/java/java/io/FileDescriptor.java     |   23 +
+ luni/src/main/java/java/lang/Double.java           |   27 +-
+ luni/src/main/java/java/lang/Float.java            |   27 +-
+ luni/src/main/java/java/lang/IntegralToString.java |   19 +-
+ luni/src/main/java/java/lang/Math.java             |   81 +++-
+ luni/src/main/java/java/lang/RealToString.java     |   44 +-
+ luni/src/main/java/java/lang/String.java           |   66 ++-
+ luni/src/main/java/java/nio/ByteBuffer.java        |   10 +
+ luni/src/main/java/java/nio/MemoryBlock.java       |  104 ++++-
+ luni/src/main/java/libcore/io/Posix.java           |  153 ++++++-
+ .../xnet/provider/jsse/OpenSSLSocketImpl.java      |   32 ++
+ luni/src/main/native/libcore_io_Posix.cpp          |   80 +++-
+ 15 files changed, 1084 insertions(+), 47 deletions(-)
+ create mode 100644 dalvik/src/main/java/dalvik/system/Taint.java
+
+diff --git a/JavaLibrary.mk b/JavaLibrary.mk
+index 18fa870..2e60a96 100644
+--- a/JavaLibrary.mk
++++ b/JavaLibrary.mk
+@@ -159,6 +159,11 @@ ifeq ($(WITH_HOST_DALVIK),true)
+     include $(BUILD_HOST_JAVA_LIBRARY)
+ endif
+ 
++# turn on taint tracking
++ifeq ($(WITH_TAINT_TRACKING),true)
++    LOCAL_CFLAGS += -DWITH_TAINT_TRACKING
++endif
++
+ #
+ # Local droiddoc for faster libcore testing
+ #
+diff --git a/NativeCode.mk b/NativeCode.mk
+index 2a222b1..810437d 100644
+--- a/NativeCode.mk
++++ b/NativeCode.mk
+@@ -95,6 +95,11 @@ LOCAL_MODULE := libjavacore
+ LOCAL_C_INCLUDES += external/stlport/stlport bionic/ bionic/libstdc++/include
+ LOCAL_SHARED_LIBRARIES += libstlport
+ 
++# turn on taint tracking
++ifeq ($(WITH_TAINT_TRACKING),true)
++    LOCAL_CFLAGS += -DWITH_TAINT_TRACKING
++endif
++
+ include $(BUILD_SHARED_LIBRARY)
+ 
+ #
+diff --git a/dalvik/src/main/java/dalvik/system/Taint.java b/dalvik/src/main/java/dalvik/system/Taint.java
+new file mode 100644
+index 0000000..5ae1962
+--- /dev/null
++++ b/dalvik/src/main/java/dalvik/system/Taint.java
+@@ -0,0 +1,455 @@
++/*
++ * Copyright (c) 2010 The Pennsylvania State University
++ * Systems and Internet Infrastructure Security Laboratory
++ *
++ * Author: William Enck <enck@cse.psu.edu>
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++package dalvik.system;
++
++import java.nio.ByteBuffer;
++
++/**
++ * Provides a Taint interface for the Dalvik VM. This class is used for
++ * implementing Taint Source and Sink functionality.
++ * 
++ */
++public final class Taint {
++
++    public static final int TAINT_CLEAR		= 0x00000000;
++    public static final int TAINT_LOCATION	= 0x00000001;
++    public static final int TAINT_CONTACTS	= 0x00000002;
++    public static final int TAINT_MIC           = 0x00000004;
++    public static final int TAINT_PHONE_NUMBER  = 0x00000008;
++    public static final int TAINT_LOCATION_GPS  = 0x00000010;
++    public static final int TAINT_LOCATION_NET  = 0x00000020;
++    public static final int TAINT_LOCATION_LAST = 0x00000040;
++    public static final int TAINT_CAMERA        = 0x00000080;
++    public static final int TAINT_ACCELEROMETER = 0x00000100;
++    public static final int TAINT_SMS           = 0x00000200;
++    public static final int TAINT_IMEI          = 0x00000400;
++    public static final int TAINT_IMSI          = 0x00000800;
++    public static final int TAINT_ICCID         = 0x00001000;
++    public static final int TAINT_DEVICE_SN     = 0x00002000;
++    public static final int TAINT_ACCOUNT       = 0x00004000;
++    public static final int TAINT_HISTORY       = 0x00008000;
++
++    /**
++     * Updates the target String's taint tag.
++     *
++     * @param str
++     *	    the target string
++     * @param tag
++     *	    tag to update (bitwise or) onto the object
++     */
++    native public static void addTaintString(String str, int tag);
++    
++    /**
++     * Updates the target Object array's taint tag.
++     *
++     * @param array
++     *	    the target object array
++     * @param tag
++     *	    tag to update (bitwise or) onto the object array
++     */
++    native public static void addTaintObjectArray(Object[] array, int tag);
++
++    /**
++     * Updates the target boolean array's taint tag.
++     *
++     * @param array
++     *	    the target boolean array
++     * @param tag
++     *	    tag to update (bitwise or) onto the boolean array
++     */
++    native public static void addTaintBooleanArray(boolean[] array, int tag);
++
++    /**
++     * Updates the target char array's taint tag.
++     *
++     * @param array
++     *	    the target char array
++     * @param tag
++     *	    tag to update (bitwise or) onto the char array
++     */
++    native public static void addTaintCharArray(char[] array, int tag);
++
++    /**
++     * Updates the target byte array's taint tag.
++     *
++     * @param array
++     *	    the target byte array
++     * @param tag
++     *	    tag to update (bitwise or) onto the byte array
++     */
++    native public static void addTaintByteArray(byte[] array, int tag);
++
++    /**
++     * Updates the target int array's taint tag.
++     *
++     * @param array
++     *	    the target int array
++     * @param tag
++     *	    tag to update (bitwise or) onto the int array
++     */
++    native public static void addTaintIntArray(int[] array, int tag);
++    
++    /**
++     * Updates the target short array's taint tag.
++     *
++     * @param array
++     *	    the target short array
++     * @param tag
++     *	    tag to update (bitwise or) onto the int array
++     */
++    native public static void addTaintShortArray(short[] array, int tag);
++
++    /**
++     * Updates the target long array's taint tag.
++     *
++     * @param array
++     *	    the target long array
++     * @param tag
++     *	    tag to update (bitwise or) onto the long array
++     */
++    native public static void addTaintLongArray(long[] array, int tag);
++
++    /**
++     * Updates the target float array's taint tag.
++     *
++     * @param array
++     *	    the target float array
++     * @param tag
++     *	    tag to update (bitwise or) onto the float array
++     */
++    native public static void addTaintFloatArray(float[] array, int tag);
++
++    /**
++     * Updates the target double array's taint tag.
++     *
++     * @param array
++     *	    the target double array
++     * @param tag
++     *	    tag to update (bitwise or) onto the double array
++     */
++    native public static void addTaintDoubleArray(double[] array, int tag);
++    
++    /**
++     * Add taint to a primiative boolean value. Only the return value has the
++     * updated taint tag.
++     *
++     * @param val
++     *	    the input value
++     * @param tag
++     *	    tag to add (bitwise or) onto the input value
++     * @return val with the added taint tag
++     */
++    native public static boolean addTaintBoolean(boolean val, int tag);
++    
++    /**
++     * Add taint to a primiative char value. Only the return value has the
++     * updated taint tag.
++     *
++     * @param val
++     *	    the input value
++     * @param tag
++     *	    tag to add (bitwise or) onto the input value
++     * @return val with the added taint tag
++     */
++    native public static char addTaintChar(char val, int tag);
++    
++    /**
++     * Add taint to a primiative byte value. Only the return value has the
++     * updated taint tag.
++     *
++     * @param val
++     *	    the input value
++     * @param tag
++     *	    tag to add (bitwise or) onto the input value
++     * @return val with the added taint tag
++     */
++    native public static byte addTaintByte(byte val, int tag);
++
++    /**
++     * Add taint to a primiative int value. Only the return value has the
++     * updated taint tag.
++     *
++     * @param val
++     *	    the input value
++     * @param tag
++     *	    tag to add (bitwise or) onto the input value
++     * @return val with the added taint tag
++     */
++    native public static int addTaintInt(int val, int tag);
++
++    /**
++     * Add taint to a primiative long value. Only the return value has the
++     * updated taint tag.
++     *
++     * @param val
++     *	    the input value
++     * @param tag
++     *	    tag to add (bitwise or) onto the input value
++     * @return val with the added taint tag
++     */
++    native public static long addTaintLong(long val, int tag);
++
++    /**
++     * Add taint to a primiative float value. Only the return value has the
++     * updated taint tag.
++     *
++     * @param val
++     *	    the input value
++     * @param tag
++     *	    tag to add (bitwise or) onto the input value
++     * @return val with the added taint tag
++     */
++    native public static float addTaintFloat(float val, int tag);
++
++    /**
++     * Add taint to a primiative double value. Only the return value has the
++     * updated taint tag.
++     *
++     * @param val
++     *	    the input value
++     * @param tag
++     *	    tag to add (bitwise or) onto the input value
++     * @return val with the added taint tag
++     */
++    native public static double addTaintDouble(double val, int tag);
++
++    /**
++     * Get the current taint tag from a String.
++     *
++     * @param str
++     *	    the target String
++     * @return the taint tag
++     */
++    native public static int getTaintString(String str);
++
++    /**
++     * Get the current taint tag from an Object array.
++     *
++     * @param array 
++     *	    the target Object array
++     * @return the taint tag
++     */
++    native public static int getTaintObjectArray(Object[] array);
++
++    /**
++     * Get the current taint tag from a boolean array.
++     *
++     * @param array 
++     *	    the target boolean array
++     * @return the taint tag
++     */
++    native public static int getTaintBooleanArray(boolean[] array);
++
++    /**
++     * Get the current taint tag from a char array.
++     *
++     * @param array 
++     *	    the target char array
++     * @return the taint tag
++     */
++    native public static int getTaintCharArray(char[] array);
++
++    /**
++     * Get the current taint tag from a byte array.
++     *
++     * @param array 
++     *	    the target byte array
++     * @return the taint tag
++     */
++    native public static int getTaintByteArray(byte[] array);
++
++    /**
++     * Get the current taint tag from a direct ByteBuffer.
++     *
++     * @param dByteBuffer 
++     *	    the target direct ByteBuffer
++     * @return the taint tag
++     */
++    public static int getTaintDirectByteBuffer(ByteBuffer dByteBuffer) {
++        if (dByteBuffer.isDirect()) {
++            return dByteBuffer.getDirectByteBufferTaint();
++        } else {
++            return -1;
++        }
++    }
++
++    /**
++     * Get the current taint tag from an int array.
++     *
++     * @param array 
++     *	    the target int array
++     * @return the taint tag
++     */
++    native public static int getTaintIntArray(int[] array);
++
++    /**
++     * Get the current taint tag from a short array.
++     *
++     * @param array 
++     *	    the target short array
++     * @return the taint tag
++     */
++    native public static int getTaintShortArray(short[] array);
++
++    /**
++     * Get the current taint tag from a long array.
++     *
++     * @param array 
++     *	    the target long array
++     * @return the taint tag
++     */
++    native public static int getTaintLongArray(long[] array);
++
++    /**
++     * Get the current taint tag from a float array.
++     *
++     * @param array 
++     *	    the target float array
++     * @return the taint tag
++     */
++    native public static int getTaintFloatArray(float[] array);
++
++    /**
++     * Get the current taint tag from a double array.
++     *
++     * @param array 
++     *	    the target double array
++     * @return the taint tag
++     */
++    native public static int getTaintDoubleArray(double[] array);
++
++    /**
++     * Get the current taint tag from a primiative boolean.
++     *
++     * @param val
++     *	    the target boolean
++     * @return the taint tag
++     */
++    native public static int getTaintBoolean(boolean val);
++
++    /**
++     * Get the current taint tag from a primiative char.
++     *
++     * @param val
++     *	    the target char 
++     * @return the taint tag
++     */
++    native public static int getTaintChar(char val);
++
++    /**
++     * Get the current taint tag from a primiative byte.
++     *
++     * @param val
++     *	    the target byte 
++     * @return the taint tag
++     */
++    native public static int getTaintByte(byte val);
++
++    /**
++     * Get the current taint tag from a primiative int.
++     *
++     * @param val
++     *	    the target int 
++     * @return the taint tag
++     */
++    native public static int getTaintInt(int val);
++
++    /**
++     * Get the current taint tag from a primiative long.
++     *
++     * @param val
++     *	    the target long 
++     * @return the taint tag
++     */
++    native public static int getTaintLong(long val);
++
++    /**
++     * Get the current taint tag from a primiative float.
++     *
++     * @param val
++     *	    the target float 
++     * @return the taint tag
++     */
++    native public static int getTaintFloat(float val);
++
++    /**
++     * Get the current taint tag from a primiative double.
++     *
++     * @param val
++     *	    the target double 
++     * @return the taint tag
++     */
++    native public static int getTaintDouble(double val);
++
++    /**
++     * Get the current taint tag from an Object reference.
++     *
++     * @param obj
++     *	    the target Object reference
++     * @return the taint tag
++     */
++    native public static int getTaintRef(Object obj);
++    
++    /**
++     * Get the taint tag from a file identified by a descriptor.
++     *
++     * @param fd
++     *	    the target file descriptor
++     * @return the taint tag
++     */
++    native public static int getTaintFile(int fd);
++    
++    /**
++     * add a taint tag to a file identified by a descriptor
++     *
++     * @param fd
++     *	    the target file descriptor
++     * @param tag
++     *	    the tag to add (bitwise or) to the file
++     */
++    native public static void addTaintFile(int fd, int tag);
++
++    /**
++     * Logging utility accessible from places android.util.Log
++     * is not.
++     *
++     * @param msg
++     *	    the message to log
++     */
++    native public static void log(String msg);
++
++
++    /**
++     * Logging utility to obtain the file path for a file descriptor
++     *
++     * @param fd
++     *	    the file descriptor
++     */
++    native public static void logPathFromFd(int fd);
++
++    /**
++     * Logging utility to obtain the peer IP addr for a file descriptor
++     *
++     * @param fd
++     *	    the file descriptor
++     */
++    native public static void logPeerFromFd(int fd);
++}
++
+diff --git a/luni/src/main/java/java/io/FileDescriptor.java b/luni/src/main/java/java/io/FileDescriptor.java
+index f04ae2c..3011ddd 100644
+--- a/luni/src/main/java/java/io/FileDescriptor.java
++++ b/luni/src/main/java/java/io/FileDescriptor.java
+@@ -104,4 +104,27 @@ public final class FileDescriptor {
+     @Override public String toString() {
+         return "FileDescriptor[" + descriptor + "]";
+     }
++	
++// begin WITH_TAINT_TRACKING
++    /**
++     * hack for printing out IP address
++     * @hide
++     */
++    public boolean hasName = false;
++
++    /**
++     * hack for printing out IP address
++     * @hide
++     */
++    public String name = null;
++
++    /**
++     * hack for setting file taint
++     * @hide
++     */
++    public int getDescriptor()
++    {
++    	return descriptor;
++    }
++// end WITH_TAINT_TRACKING
+ }
+diff --git a/luni/src/main/java/java/lang/Double.java b/luni/src/main/java/java/lang/Double.java
+index 456529b..f2dfc11 100644
+--- a/luni/src/main/java/java/lang/Double.java
++++ b/luni/src/main/java/java/lang/Double.java
+@@ -171,7 +171,14 @@ public final class Double extends Number implements Comparable<Double> {
+      * {@code value}. All <em>Not-a-Number (NaN)</em> values are converted to a single NaN
+      * representation ({@code 0x7ff8000000000000L}) (compare to {@link #doubleToRawLongBits}).
+      */
+-    public static native long doubleToLongBits(double value);
++// begin WITH_TAINT_TRACKING
++    //public static native long doubleToLongBits(double value);
++    public static native long doubleToLongBits_intrinsic(double value);
++    
++    public static long doubleToLongBits(double value) {
++        return doubleToLongBits_intrinsic(value);
++    }
++// end WITH_TAINT_TRACKING
+ 
+     /**
+      * Returns an integer corresponding to the bits of the given
+@@ -179,7 +186,14 @@ public final class Double extends Number implements Comparable<Double> {
+      * {@code value}. <em>Not-a-Number (NaN)</em> values are preserved (compare
+      * to {@link #doubleToLongBits}).
+      */
+-    public static native long doubleToRawLongBits(double value);
++// begin WITH_TAINT_TRACKING
++    //public static native long doubleToRawLongBits(double value);
++    public static native long doubleToRawLongBits_intrinsic(double value);
++    
++    public static long doubleToRawLongBits(double value) {
++        return doubleToRawLongBits_intrinsic(value);
++    }
++// end WITH_TAINT_TRACKING
+ 
+     /**
+      * Gets the primitive value of this double.
+@@ -275,7 +289,14 @@ public final class Double extends Number implements Comparable<Double> {
+      * Returns the <a href="http://en.wikipedia.org/wiki/IEEE_754-1985">IEEE 754</a>
+      * double precision float corresponding to the given {@code bits}.
+      */
+-    public static native double longBitsToDouble(long bits);
++// begin WITH_TAINT_TRACKING
++    //public static native double longBitsToDouble(long bits);
++    public static native double longBitsToDouble_intrinsic(long bits);
++    
++    public static double longBitsToDouble(long bits) {
++        return longBitsToDouble_intrinsic(bits);
++    }
++// end WITH_TAINT_TRACKING
+ 
+     @Override
+     public long longValue() {
+diff --git a/luni/src/main/java/java/lang/Float.java b/luni/src/main/java/java/lang/Float.java
+index 900b2a0..c36c1d2 100644
+--- a/luni/src/main/java/java/lang/Float.java
++++ b/luni/src/main/java/java/lang/Float.java
+@@ -199,7 +199,14 @@ public final class Float extends Number implements Comparable<Float> {
+      * float {@code value}. All <em>Not-a-Number (NaN)</em> values are converted to a single NaN
+      * representation ({@code 0x7fc00000}) (compare to {@link #floatToRawIntBits}).
+      */
+-    public static native int floatToIntBits(float value);
++// begin WITH_TAINT_TRACKING
++    //public static native int floatToIntBits(float value);
++    public static native int floatToIntBits_intrinsic(float value);
++    
++    public static int floatToIntBits(float value) {
++        return floatToIntBits_intrinsic(value);
++    }
++// end WITH_TAINT_TRACKING
+ 
+     /**
+      * Returns an integer corresponding to the bits of the given
+@@ -207,7 +214,14 @@ public final class Float extends Number implements Comparable<Float> {
+      * float {@code value}. <em>Not-a-Number (NaN)</em> values are preserved (compare
+      * to {@link #floatToIntBits}).
+      */
+-    public static native int floatToRawIntBits(float value);
++// begin WITH_TAINT_TRACKING
++    //public static native int floatToRawIntBits(float value);
++    public static native int floatToRawIntBits_intrinsic(float value);
++    
++    public static int floatToRawIntBits(float value) {
++        return floatToRawIntBits_intrinsic(value);
++    }
++// end WITH_TAINT_TRACKING
+ 
+     /**
+      * Gets the primitive value of this float.
+@@ -228,7 +242,14 @@ public final class Float extends Number implements Comparable<Float> {
+      * Returns the <a href="http://en.wikipedia.org/wiki/IEEE_754-1985">IEEE 754</a>
+      * single precision float corresponding to the given {@code bits}.
+      */
+-    public static native float intBitsToFloat(int bits);
++// begin WITH_TAINT_TRACKING
++    public static native float intBitsToFloat_intrinsic(int bits);
++    //public static native float intBitsToFloat(int bits);
++    
++    public static float intBitsToFloat(int bits) {
++        return intBitsToFloat_intrinsic(bits);
++    }
++// end WITH_TAINT_TRACKING
+ 
+     @Override
+     public int intValue() {
+diff --git a/luni/src/main/java/java/lang/IntegralToString.java b/luni/src/main/java/java/lang/IntegralToString.java
+index f6234a0..f75f2a5 100644
+--- a/luni/src/main/java/java/lang/IntegralToString.java
++++ b/luni/src/main/java/java/lang/IntegralToString.java
+@@ -16,6 +16,10 @@
+ 
+ package java.lang;
+ 
++// begin WITH_TAINT_TRACKING
++import dalvik.system.Taint;
++// end WITH_TAINT_TRACKING
++
+ /**
+  * Converts integral types to strings. This class is public but hidden so that it can also be
+  * used by java.util.Formatter to speed up %d. This class is in java.lang so that it can take
+@@ -180,6 +184,9 @@ public final class IntegralToString {
+     private static String convertInt(AbstractStringBuilder sb, int i) {
+         boolean negative = false;
+         String quickResult = null;
++// begin WITH_TAINT_TRACKING
++        int taint = Taint.getTaintInt(i);
++// end WITH_TAINT_TRACKING
+         if (i < 0) {
+             negative = true;
+             i = -i;
+@@ -206,9 +213,15 @@ public final class IntegralToString {
+         }
+         if (quickResult != null) {
+             if (sb != null) {
++// begin WITH_TAINT_TRACKING
++                Taint.addTaintString(quickResult, taint);
++// end WITH_TAINT_TRACKING
+                 sb.append0(quickResult);
+                 return null;
+             }
++// begin WITH_TAINT_TRACKING
++            Taint.addTaintString(quickResult, taint);
++// end WITH_TAINT_TRACKING
+             return quickResult;
+         }
+ 
+@@ -243,7 +256,11 @@ public final class IntegralToString {
+             sb.append0(buf, cursor, bufLen - cursor);
+             return null;
+         } else {
+-            return new String(cursor, bufLen - cursor, buf);
++// begin WITH_TAINT_TRACKING
++            String ret = new String(cursor, bufLen - cursor, buf);
++            Taint.addTaintString(ret, taint);
++            return ret;
++// end WITH_TAINT_TRACKING
+         }
+     }
+ 
+diff --git a/luni/src/main/java/java/lang/Math.java b/luni/src/main/java/java/lang/Math.java
+index 68db4fa..770d6c6 100644
+--- a/luni/src/main/java/java/lang/Math.java
++++ b/luni/src/main/java/java/lang/Math.java
+@@ -58,7 +58,14 @@ public final class Math {
+      *            the value whose absolute value has to be computed.
+      * @return the absolute value of the argument.
+      */
+-    public static native double abs(double d);
++// begin WITH_TAINT_TRACKING
++    //public static native double abs(double d);
++    public static native double abs_intrinsic(double d);
++    
++    public static double abs(double d) {
++        return abs_intrinsic(d);
++    }
++// end WITH_TAINT_TRACKING
+ 
+     /**
+      * Returns the absolute value of the argument.
+@@ -76,7 +83,14 @@ public final class Math {
+      * @return the argument if it is positive, otherwise the negation of the
+      *         argument.
+      */
+-    public static native float abs(float f);
++// begin WITH_TAINT_TRACKING
++    //public static native float abs(float f);
++    public static native float abs_intrinsic(float f);
++    
++    public static float abs(float f) {
++        return abs_intrinsic(f);
++    }
++// end WITH_TAINT_TRACKING
+ 
+     /**
+      * Returns the absolute value of the argument.
+@@ -89,7 +103,14 @@ public final class Math {
+      * @return the argument if it is positive, otherwise the negation of the
+      *         argument.
+      */
+-    public static native int abs(int i);
++// begin WITH_TAINT_TRACKING
++    //public static native int abs(int i);
++    public static native int abs_intrinsic(int i);
++    
++    public static int abs(int i) {
++        return abs_intrinsic(i);
++    }
++// end WITH_TAINT_TRACKING
+ 
+     /**
+      * Returns the absolute value of the argument. If the argument is {@code
+@@ -100,7 +121,14 @@ public final class Math {
+      * @return the argument if it is positive, otherwise the negation of the
+      *         argument.
+      */
+-    public static native long abs(long l);
++// begin WITH_TAINT_TRACKING
++    //public static native long abs(long l);
++    public static native long abs_intrinsic(long l);
++    
++    public static long abs(long l) {
++        return abs_intrinsic(l);
++    }
++// end WITH_TAINT_TRACKING
+ 
+     /**
+      * Returns the closest double approximation of the arc cosine of the
+@@ -253,7 +281,14 @@ public final class Math {
+      *            the angle whose cosine has to be computed, in radians.
+      * @return the cosine of the argument.
+      */
+-    public static native double cos(double d);
++// begin WITH_TAINT_TRACKING
++    //public static native double cos(double d);
++    public static native double cos_intrinsic(double d);
++    
++    public static double cos(double d) {
++        return cos_intrinsic(d);
++    }
++// end WITH_TAINT_TRACKING
+ 
+     /**
+      * Returns the closest double approximation of the hyperbolic cosine of the
+@@ -540,7 +575,14 @@ public final class Math {
+      *            the second argument.
+      * @return the larger of {@code i1} and {@code i2}.
+      */
+-    public static native int max(int i1, int i2);
++// begin WITH_TAINT_TRACKING
++    //public static native int max(int i1, int i2);
++    public static native int max_intrinsic(int i1, int i2);
++    
++    public static int max(int i1, int i2) {
++        return max_intrinsic(i1, i2);
++    }
++// end WITH_TAINT_TRACKING
+ 
+     /**
+      * Returns the most positive (closest to positive infinity) of the two
+@@ -640,7 +682,14 @@ public final class Math {
+      *            the second argument.
+      * @return the smaller of {@code i1} and {@code i2}.
+      */
+-    public static native int min(int i1, int i2);
++// begin WITH_TAINT_TRACKING
++    //public static native int min(int i1, int i2);
++    public static native int min_intrinsic(int i1, int i2);
++    
++    public static int min(int i1, int i2) {
++        return min_intrinsic(i1, i2);
++    }
++// end WITH_TAINT_TRACKING
+ 
+     /**
+      * Returns the most negative (closest to negative infinity) of the two
+@@ -850,7 +899,14 @@ public final class Math {
+      *            the angle whose sin has to be computed, in radians.
+      * @return the sine of the argument.
+      */
+-    public static native double sin(double d);
++// begin WITH_TAINT_TRACKING
++    //public static native double sin(double d);
++    public static native double sin_intrinsic(double d);
++    
++    public static double sin(double d) {
++        return sin_intrinsic(d);
++    }
++// end WITH_TAINT_TRACKING
+ 
+     /**
+      * Returns the closest double approximation of the hyperbolic sine of the
+@@ -889,7 +945,14 @@ public final class Math {
+      *            the value whose square root has to be computed.
+      * @return the square root of the argument.
+      */
+-    public static native double sqrt(double d);
++// begin WITH_TAINT_TRACKING
++    //public static native double sqrt(double d);
++    public static native double sqrt_intrinsic(double d);
++    
++    public static double sqrt(double d) {
++        return sqrt_intrinsic(d);
++    }
++// end WITH_TAINT_TRACKING
+ 
+     /**
+      * Returns the closest double approximation of the tangent of the argument.
+diff --git a/luni/src/main/java/java/lang/RealToString.java b/luni/src/main/java/java/lang/RealToString.java
+index 31203eb..fe2f334 100644
+--- a/luni/src/main/java/java/lang/RealToString.java
++++ b/luni/src/main/java/java/lang/RealToString.java
+@@ -19,6 +19,10 @@ package java.lang;
+ 
+ import libcore.math.MathUtils;
+ 
++// begin WITH_TAINT_TRACKING
++import dalvik.system.Taint;
++// end WITH_TAINT_TRACKING
++
+ final class RealToString {
+     private static final ThreadLocal<RealToString> INSTANCE = new ThreadLocal<RealToString>() {
+         @Override protected RealToString initialValue() {
+@@ -64,6 +68,10 @@ final class RealToString {
+     }
+ 
+     private String convertDouble(AbstractStringBuilder sb, double inputNumber) {
++// begin WITH_TAINT_TRACKING
++    	int tag = Taint.getTaintDouble(inputNumber);
++// end WITH_TAINT_TRACKING
++		
+         long inputNumberBits = Double.doubleToRawLongBits(inputNumber);
+         boolean positive = (inputNumberBits & Double.SIGN_MASK) == 0;
+         int e = (int) ((inputNumberBits & Double.EXPONENT_MASK) >> Double.MANTISSA_BITS);
+@@ -86,6 +94,11 @@ final class RealToString {
+             }
+         }
+         if (quickResult != null) {
++// begin WITH_TAINT_TRACKING
++            if (tag != Taint.TAINT_CLEAR) {
++                Taint.addTaintString(quickResult, tag);
++            }
++// end WITH_TAINT_TRACKING	
+             return resultOrSideEffect(sb, quickResult);
+         }
+ 
+@@ -119,7 +132,16 @@ final class RealToString {
+         } else {
+             freeFormat(dst, positive);
+         }
+-        return (sb != null) ? null : dst.toString();
++		
++// begin WITH_TAINT_TRACKING
++        if (tag != Taint.TAINT_CLEAR) {
++            String ts = dst.toString();
++            Taint.addTaintString(ts, tag);
++            return (sb != null) ? null : ts;
++        } else {
++            return (sb != null) ? null : dst.toString();
++        }
++// end WITH_TAINT_TRACKING
+     }
+ 
+     public String floatToString(float f) {
+@@ -131,6 +153,10 @@ final class RealToString {
+     }
+ 
+     public String convertFloat(AbstractStringBuilder sb, float inputNumber) {
++// begin WITH_TAINT_TRACKING
++        int tag = Taint.getTaintFloat(inputNumber);
++// end WITH_TAINT_TRACKING
++		
+         int inputNumberBits = Float.floatToRawIntBits(inputNumber);
+         boolean positive = (inputNumberBits & Float.SIGN_MASK) == 0;
+         int e = (inputNumberBits & Float.EXPONENT_MASK) >> Float.MANTISSA_BITS;
+@@ -148,6 +174,11 @@ final class RealToString {
+             quickResult = positive ? "0.0" : "-0.0";
+         }
+         if (quickResult != null) {
++// begin WITH_TAINT_TRACKING
++            if (tag != Taint.TAINT_CLEAR) {
++                Taint.addTaintString(quickResult, tag);
++            }
++// end WITH_TAINT_TRACKING	
+             return resultOrSideEffect(sb, quickResult);
+         }
+ 
+@@ -185,7 +216,16 @@ final class RealToString {
+         } else {
+             freeFormat(dst, positive);
+         }
+-        return (sb != null) ? null : dst.toString();
++        
++// begin WITH_TAINT_TRACKING
++        if (tag != Taint.TAINT_CLEAR) {
++            String ts = dst.toString();
++            Taint.addTaintString(ts, tag);
++            return (sb != null) ? null : ts;
++        } else {
++            return (sb != null) ? null : dst.toString();
++        }
++// end WITH_TAINT_TRACKING
+     }
+ 
+     private void freeFormatExponential(AbstractStringBuilder sb, boolean positive) {
+diff --git a/luni/src/main/java/java/lang/String.java b/luni/src/main/java/java/lang/String.java
+index efd4210..5cd2bb3 100644
+--- a/luni/src/main/java/java/lang/String.java
++++ b/luni/src/main/java/java/lang/String.java
+@@ -29,6 +29,9 @@ import java.util.Formatter;
+ import java.util.Locale;
+ import java.util.regex.Pattern;
+ import libcore.util.EmptyArray;
++// begin WITH_TAINT_TRACKING
++import dalvik.system.Taint;
++// end WITH_TAINT_TRACKING
+ 
+ /**
+  * An immutable sequence of characters/code units ({@code char}s). A
+@@ -583,7 +586,14 @@ outer:
+      * @throws IndexOutOfBoundsException
+      *             if {@code index < 0} or {@code index >= length()}.
+      */
+-    public native char charAt(int index);
++// begin WITH_TAINT_TRACKING
++    //public native char charAt(int index);
++    public native char charAt_intrinsic(int index);
++    
++    public char charAt(int index) {
++        return charAt_intrinsic(index);
++    }
++// end WITH_TAINT_TRACKING
+ 
+     private StringIndexOutOfBoundsException indexAndLength(int index) {
+         throw new StringIndexOutOfBoundsException(this, index);
+@@ -631,7 +641,14 @@ outer:
+      * @throws NullPointerException
+      *             if {@code string} is {@code null}.
+      */
+-    public native int compareTo(String string);
++// begin WITH_TAINT_TRACKING
++    //public native int compareTo(String string);
++    public native int compareTo_intrinsic(String string);
++    
++    public int compareTo(String string) {
++        return compareTo_intrinsic(string);
++    }
++// end WITH_TAINT_TRACKING
+ 
+     /**
+      * Compares the specified string to this string using the Unicode values of
+@@ -752,7 +769,14 @@ outer:
+      *         {@code false} otherwise.
+      * @see #hashCode
+      */
+-    @Override public native boolean equals(Object object);
++// begin WITH_TAINT_TRACKING
++    //@Override public native boolean equals(Object object);
++    public native boolean equals_intrinsic(Object object);
++    
++    @Override public boolean equals(Object object) {
++        return equals_intrinsic(object);
++    }
++// end WITH_TAINT_TRACKING
+ 
+     /**
+      * Compares the specified string to this string ignoring the case of the
+@@ -966,7 +990,14 @@ outer:
+         return fastIndexOf(c, start);
+     }
+ 
+-    private native int fastIndexOf(int c, int start);
++// begin WITH_TAINT_TRACKING
++    //private native int fastIndexOf(int c, int start);
++    private native int fastIndexOf_intrinsic(int c, int start);
++    
++    private int fastIndexOf(int c, int start) {
++        return fastIndexOf_intrinsic(c, start);
++    }
++// end WITH_TAINT_TRACKING
+ 
+     private int indexOfSupplementary(int c, int start) {
+         if (!Character.isSupplementaryCodePoint(c)) {
+@@ -1087,7 +1118,14 @@ outer:
+      *
+      * @since 1.6
+      */
+-    public native boolean isEmpty();
++// begin WITH_TAINT_TRACKING
++    //public native boolean isEmpty();
++    public native boolean isEmpty_intrinsic();
++    
++    public boolean isEmpty() {
++        return isEmpty_intrinsic();
++    }
++// end WITH_TAINT_TRACKING
+ 
+     /**
+      * Returns the last index of the code point {@code c}, or -1.
+@@ -1211,7 +1249,14 @@ outer:
+      *
+      * @return the number of characters in this string.
+      */
+-    public native int length();
++// begin WITH_TAINT_TRACKING
++    //public native int length();
++    public native int length_intrinsic();
++    
++    public int length() {
++        return length_intrinsic();
++    }
++// end WITH_TAINT_TRACKING
+ 
+     /**
+      * Compares the specified string to this string and compares the specified
+@@ -1621,6 +1666,9 @@ outer:
+             s = new String(0, 1, new char[] { value });
+         }
+         s.hashCode = value;
++// begin WITH_TAINT_TRACKING
++        Taint.addTaintString(s,Taint.getTaintChar(value));
++// end WITH_TAINT_TRACKING
+         return s;
+     }
+ 
+@@ -1691,7 +1739,11 @@ outer:
+      * @return the boolean converted to a string.
+      */
+     public static String valueOf(boolean value) {
+-        return value ? "true" : "false";
++// begin WITH_TAINT_TRACKING
++        String ret = value ? "true" : "false";
++        Taint.addTaintString(ret, Taint.getTaintBoolean(value));
++        return ret;
++// end WITH_TAINT_TRACKING
+     }
+ 
+     /**
+diff --git a/luni/src/main/java/java/nio/ByteBuffer.java b/luni/src/main/java/java/nio/ByteBuffer.java
+index ef725c1..5615e80 100644
+--- a/luni/src/main/java/java/nio/ByteBuffer.java
++++ b/luni/src/main/java/java/nio/ByteBuffer.java
+@@ -1031,4 +1031,14 @@ public abstract class ByteBuffer extends Buffer implements Comparable<ByteBuffer
+      * @return a sliced buffer that shares its content with this buffer.
+      */
+     public abstract ByteBuffer slice();
++
++// begin WITH_TAINT_TRACKING
++    public int getDirectByteBufferTaint() {
++        if (this.isDirect()) {
++            return this.block.getTaint();
++        } else {
++            return 0;
++        }
++    }
++// end WITH_TAINT_TRACKING
+ }
+diff --git a/luni/src/main/java/java/nio/MemoryBlock.java b/luni/src/main/java/java/nio/MemoryBlock.java
+index add69c5..52a35ec 100644
+--- a/luni/src/main/java/java/nio/MemoryBlock.java
++++ b/luni/src/main/java/java/nio/MemoryBlock.java
+@@ -26,6 +26,10 @@ import libcore.io.Libcore;
+ import libcore.io.Memory;
+ import static libcore.io.OsConstants.*;
+ 
++// begin WITH_TAINT_TRACKING
++import dalvik.system.Taint;
++// end WITH_TAINT_TRACKING
++
+ class MemoryBlock {
+     /**
+      * Handles calling munmap(2) on a memory-mapped region.
+@@ -76,6 +80,13 @@ class MemoryBlock {
+             array = null;
+             address = 0;
+         }
++
++        // begin WITH_TAINT_TRACKING
++        @Override public void addTaint(int newTaint) {
++            super.addTaint(newTaint);
++            Taint.addTaintByteArray(array, newTaint);
++        }
++        // end WITH_TAINT_TRACKING
+     }
+ 
+     /**
+@@ -91,6 +102,12 @@ class MemoryBlock {
+     // TODO: should be long on 64-bit devices; int for performance.
+     protected int address;
+     protected final long size;
++// begin WITH_TAINT_TRACKING
++    protected int taint;
++    public void addTaint(int newTaint) {
++        taint = taint | newTaint;
++    }
++// end WITH_TAINT_TRACKING
+ 
+     public static MemoryBlock mmap(FileDescriptor fd, long offset, long size, MapMode mapMode) throws IOException {
+         if (size == 0) {
+@@ -135,6 +152,9 @@ class MemoryBlock {
+     private MemoryBlock(int address, long size) {
+         this.address = address;
+         this.size = size;
++// begin WITH_TAINT_TRACKING
++        this.taint = Taint.TAINT_CLEAR;
++// end WITH_TAINT_TRACKING
+     }
+ 
+     // Used to support array/arrayOffset/hasArray for direct buffers.
+@@ -146,91 +166,163 @@ class MemoryBlock {
+     }
+ 
+     public final void pokeByte(int offset, byte value) {
++// begin WITH_TAINT_TRACKING
++        addTaint(Taint.getTaintByte(value));
++// end WITH_TAINT_TRACKING
+         Memory.pokeByte(address + offset, value);
+     }
+ 
+     public final void pokeByteArray(int offset, byte[] src, int srcOffset, int byteCount) {
++// begin WITH_TAINT_TRACKING
++        addTaint(Taint.getTaintByteArray(src));
++// end WITH_TAINT_TRACKING
+         Memory.pokeByteArray(address + offset, src, srcOffset, byteCount);
+     }
+ 
+     public final void pokeCharArray(int offset, char[] src, int srcOffset, int charCount, boolean swap) {
++// begin WITH_TAINT_TRACKING
++        addTaint(Taint.getTaintCharArray(src));
++// end WITH_TAINT_TRACKING
+         Memory.pokeCharArray(address + offset, src, srcOffset, charCount, swap);
+     }
+ 
+     public final void pokeDoubleArray(int offset, double[] src, int srcOffset, int doubleCount, boolean swap) {
++// begin WITH_TAINT_TRACKING
++        addTaint(Taint.getTaintDoubleArray(src));
++// end WITH_TAINT_TRACKING
+         Memory.pokeDoubleArray(address + offset, src, srcOffset, doubleCount, swap);
+     }
+ 
+     public final void pokeFloatArray(int offset, float[] src, int srcOffset, int floatCount, boolean swap) {
++// begin WITH_TAINT_TRACKING
++        addTaint(Taint.getTaintFloatArray(src));
++// end WITH_TAINT_TRACKING
+         Memory.pokeFloatArray(address + offset, src, srcOffset, floatCount, swap);
+     }
+ 
+     public final void pokeIntArray(int offset, int[] src, int srcOffset, int intCount, boolean swap) {
++// begin WITH_TAINT_TRACKING
++        addTaint(Taint.getTaintIntArray(src));
++// end WITH_TAINT_TRACKING
+         Memory.pokeIntArray(address + offset, src, srcOffset, intCount, swap);
+     }
+ 
+     public final void pokeLongArray(int offset, long[] src, int srcOffset, int longCount, boolean swap) {
++// begin WITH_TAINT_TRACKING
++        addTaint(Taint.getTaintLongArray(src));
++// end WITH_TAINT_TRACKING
+         Memory.pokeLongArray(address + offset, src, srcOffset, longCount, swap);
+     }
+ 
+     public final void pokeShortArray(int offset, short[] src, int srcOffset, int shortCount, boolean swap) {
++// begin WITH_TAINT_TRACKING
++        addTaint(Taint.getTaintShortArray(src));
++// end WITH_TAINT_TRACKING
+         Memory.pokeShortArray(address + offset, src, srcOffset, shortCount, swap);
+     }
+ 
+     public final byte peekByte(int offset) {
+-        return Memory.peekByte(address + offset);
++// begin WITH_TAINT_TRACKING
++//        return Memory.peekByte(address + offset);
++        byte val = Memory.peekByte(address + offset);
++        return Taint.addTaintByte(val, taint);
++// end WITH_TAINT_TRACKING
+     }
+ 
+     public final void peekByteArray(int offset, byte[] dst, int dstOffset, int byteCount) {
+         Memory.peekByteArray(address + offset, dst, dstOffset, byteCount);
++// begin WITH_TAINT_TRACKING
++        Taint.addTaintByteArray(dst, taint);
++// end WITH_TAINT_TRACKING
+     }
+ 
+     public final void peekCharArray(int offset, char[] dst, int dstOffset, int charCount, boolean swap) {
+         Memory.peekCharArray(address + offset, dst, dstOffset, charCount, swap);
++// begin WITH_TAINT_TRACKING
++        Taint.addTaintCharArray(dst, taint);
++// end WITH_TAINT_TRACKING
+     }
+ 
+     public final void peekDoubleArray(int offset, double[] dst, int dstOffset, int doubleCount, boolean swap) {
+         Memory.peekDoubleArray(address + offset, dst, dstOffset, doubleCount, swap);
++// begin WITH_TAINT_TRACKING
++        Taint.addTaintDoubleArray(dst, taint);
++// end WITH_TAINT_TRACKING
+     }
+ 
+     public final void peekFloatArray(int offset, float[] dst, int dstOffset, int floatCount, boolean swap) {
+         Memory.peekFloatArray(address + offset, dst, dstOffset, floatCount, swap);
++// begin WITH_TAINT_TRACKING
++        Taint.addTaintFloatArray(dst, taint);
++// end WITH_TAINT_TRACKING
+     }
+ 
+     public final void peekIntArray(int offset, int[] dst, int dstOffset, int intCount, boolean swap) {
+         Memory.peekIntArray(address + offset, dst, dstOffset, intCount, swap);
++// begin WITH_TAINT_TRACKING
++        Taint.addTaintIntArray(dst, taint);
++// end WITH_TAINT_TRACKING
+     }
+ 
+     public final void peekLongArray(int offset, long[] dst, int dstOffset, int longCount, boolean swap) {
+         Memory.peekLongArray(address + offset, dst, dstOffset, longCount, swap);
++// begin WITH_TAINT_TRACKING
++        Taint.addTaintLongArray(dst, taint);
++// end WITH_TAINT_TRACKING
+     }
+ 
+     public final void peekShortArray(int offset, short[] dst, int dstOffset, int shortCount, boolean swap) {
+         Memory.peekShortArray(address + offset, dst, dstOffset, shortCount, swap);
++// begin WITH_TAINT_TRACKING
++        Taint.addTaintShortArray(dst, taint);
++// end WITH_TAINT_TRACKING
+     }
+ 
++// PJG: FIXME: why disabled for Short?
++
+     public final void pokeShort(int offset, short value, ByteOrder order) {
++// begin WITH_TAINT_TRACKING
++//        addTaint(Taint.getTaintShort(value));
++// end WITH_TAINT_TRACKING
+         Memory.pokeShort(address + offset, value, order.needsSwap);
+     }
+ 
+     public final short peekShort(int offset, ByteOrder order) {
++// begin WITH_TAINT_TRACKING
+         return Memory.peekShort(address + offset, order.needsSwap);
++//        short val = Memory.peekShort(address + offset, order.needsSwap);
++//        return Taint.addTaintShort(val, taint);
++// end WITH_TAINT_TRACKING
+     }
+ 
+     public final void pokeInt(int offset, int value, ByteOrder order) {
++// begin WITH_TAINT_TRACKING
++        taint = taint | Taint.getTaintInt(value);
++// end WITH_TAINT_TRACKING
+         Memory.pokeInt(address + offset, value, order.needsSwap);
+     }
+ 
+     public final int peekInt(int offset, ByteOrder order) {
+-        return Memory.peekInt(address + offset, order.needsSwap);
++// begin WITH_TAINT_TRACKING
++//        return Memory.peekInt(address + offset, order.needsSwap);
++        int val = Memory.peekInt(address + offset, order.needsSwap);
++        return Taint.addTaintInt(val, taint);
++// end WITH_TAINT_TRACKING
+     }
+ 
+     public final void pokeLong(int offset, long value, ByteOrder order) {
++// begin WITH_TAINT_TRACKING
++        addTaint(Taint.getTaintLong(value));
++// end WITH_TAINT_TRACKING
+         Memory.pokeLong(address + offset, value, order.needsSwap);
+     }
+ 
+     public final long peekLong(int offset, ByteOrder order) {
+-        return Memory.peekLong(address + offset, order.needsSwap);
++// begin WITH_TAINT_TRACKING
++//        return Memory.peekLong(address + offset, order.needsSwap);
++        long val = Memory.peekLong(address + offset, order.needsSwap);
++        return Taint.addTaintLong(val, taint);
++// end WITH_TAINT_TRACKING
+     }
+ 
+     public final int toInt() {
+@@ -244,4 +336,10 @@ class MemoryBlock {
+     public final long getSize() {
+         return size;
+     }
++
++// begin WITH_TAINT_TRACKING
++    public int getTaint() {
++        return taint;
++    }
++// end WITH_TAINT_TRACKING
+ }
+diff --git a/luni/src/main/java/libcore/io/Posix.java b/luni/src/main/java/libcore/io/Posix.java
+index 7bbf49f..41121ac 100644
+--- a/luni/src/main/java/libcore/io/Posix.java
++++ b/luni/src/main/java/libcore/io/Posix.java
+@@ -25,6 +25,10 @@ import java.nio.NioUtils;
+ import libcore.util.MutableInt;
+ import libcore.util.MutableLong;
+ 
++// begin WITH_TAINT_TRACKING
++import dalvik.system.Taint;
++// end WITH_TAINT_TRACKING
++
+ public final class Posix implements Os {
+     Posix() { }
+ 
+@@ -33,7 +37,18 @@ public final class Posix implements Os {
+     public native void bind(FileDescriptor fd, InetAddress address, int port) throws ErrnoException;
+     public native void chmod(String path, int mode) throws ErrnoException;
+     public native void close(FileDescriptor fd) throws ErrnoException;
+-    public native void connect(FileDescriptor fd, InetAddress address, int port) throws ErrnoException;
++// begin WITH_TAINT_TRACKING
++    //public native void connect(FileDescriptor fd, InetAddress address, int port) throws ErrnoException;
++    public native void connectImpl(FileDescriptor fd, InetAddress address, int port) throws ErrnoException;
++    public void connect(FileDescriptor fd, InetAddress address, int port) throws ErrnoException {
++        String addr = address.getHostAddress();
++        if (addr != null) {
++             fd.hasName = true;
++             fd.name = addr;
++    	}
++        connectImpl(fd, address, port);
++    }
++// end WITH_TAINT_TRACKING
+     public native FileDescriptor dup(FileDescriptor oldFd) throws ErrnoException;
+     public native FileDescriptor dup2(FileDescriptor oldFd, int newFd) throws ErrnoException;
+     public native String[] environ();
+@@ -93,9 +108,36 @@ public final class Posix implements Os {
+         // This indirection isn't strictly necessary, but ensures that our public interface is type safe.
+         return preadBytes(fd, bytes, byteOffset, byteCount, offset);
+     }
+-    private native int preadBytes(FileDescriptor fd, Object buffer, int bufferOffset, int byteCount, long offset) throws ErrnoException;
++// begin WITH_TAINT_TRACKING
++    //private native int preadBytes(FileDescriptor fd, Object buffer, int bufferOffset, int byteCount, long offset) throws ErrnoException;
++    private native int preadBytesImpl(FileDescriptor fd, Object buffer, int bufferOffset, int byteCount, long offset) throws ErrnoException;
++    private int preadBytes(FileDescriptor fd, Object buffer, int bufferOffset, int byteCount, long offset) throws ErrnoException {
++        if (buffer == null) {
++            throw new NullPointerException();
++        }
++        int bytesRead = preadBytesImpl(fd, buffer, bufferOffset, byteCount, offset);
++        int fdInt = fd.getDescriptor();
++        int tag = Taint.getTaintFile(fdInt);
++        if (tag != Taint.TAINT_CLEAR) {
++            String dstr = new String((byte[])buffer, bufferOffset, ((byteCount > 100)?100:byteCount));
++            String tstr = "0x" + Integer.toHexString(tag);
++            Taint.log("libcore.os.read(" + fdInt + "): reading with tag " + tstr + " data[" + dstr + "]");
++            Taint.addTaintByteArray((byte[])buffer, tag);
++        }
++        return bytesRead;
++    }
++// end WITH_TAINT_TRACKING
+     public int pwrite(FileDescriptor fd, ByteBuffer buffer, long offset) throws ErrnoException {
+         if (buffer.isDirect()) {
++// begin WITH_TAINT_TRACKING
++            int tag = buffer.getDirectByteBufferTaint();
++            if (tag != Taint.TAINT_CLEAR) {
++                int fdInt = fd.getDescriptor();
++                Taint.logPathFromFd(fdInt);
++                String tstr = "0x" + Integer.toHexString(tag);
++                Taint.log("libcore.os.pwrite a direct ByteBuffer with taint tag " + tstr);
++            }
++// end WITH_TAINT_TRACKING
+             return pwriteBytes(fd, buffer, buffer.position(), buffer.remaining(), offset);
+         } else {
+             return pwriteBytes(fd, NioUtils.unsafeArray(buffer), NioUtils.unsafeArrayOffset(buffer) + buffer.position(), buffer.remaining(), offset);
+@@ -105,8 +147,29 @@ public final class Posix implements Os {
+         // This indirection isn't strictly necessary, but ensures that our public interface is type safe.
+         return pwriteBytes(fd, bytes, byteOffset, byteCount, offset);
+     }
+-    private native int pwriteBytes(FileDescriptor fd, Object buffer, int bufferOffset, int byteCount, long offset) throws ErrnoException;
+-    public int read(FileDescriptor fd, ByteBuffer buffer) throws ErrnoException {
++// begin WITH_TAINT_TRACKING
++    //private native int pwriteBytes(FileDescriptor fd, Object buffer, int bufferOffset, int byteCount, long offset) throws ErrnoException;
++    private native int pwriteBytesImpl(FileDescriptor fd, Object buffer, int bufferOffset, int byteCount, long offset) throws ErrnoException;
++    private int pwriteBytes(FileDescriptor fd, Object buffer, int bufferOffset, int byteCount, long offset) throws ErrnoException {
++        if (buffer == null) {
++            throw new NullPointerException();
++        }
++		
++        if (buffer instanceof byte[]) {
++            int fdInt = fd.getDescriptor();
++            int tag = Taint.getTaintByteArray((byte[]) buffer);
++            if (tag != Taint.TAINT_CLEAR) {
++                String dstr = new String((byte[]) buffer, bufferOffset, ((byteCount > 100) ? 100 : byteCount));
++                Taint.logPathFromFd(fdInt);
++                String tstr = "0x" + Integer.toHexString(tag);
++                Taint.log("libcore.os.pwrite byte array(" + fdInt + "): writing with tag " + tstr + " data[" + dstr + "]");
++            }
++        }
++        int bytesWritten = pwriteBytesImpl(fd, buffer, bufferOffset, byteCount, offset);
++        return bytesWritten;
++    }
++// end WITH_TAINT_TRACKING
++	public int read(FileDescriptor fd, ByteBuffer buffer) throws ErrnoException {
+         if (buffer.isDirect()) {
+             return readBytes(fd, buffer, buffer.position(), buffer.remaining());
+         } else {
+@@ -117,7 +180,26 @@ public final class Posix implements Os {
+         // This indirection isn't strictly necessary, but ensures that our public interface is type safe.
+         return readBytes(fd, bytes, byteOffset, byteCount);
+     }
+-    private native int readBytes(FileDescriptor fd, Object buffer, int offset, int byteCount) throws ErrnoException;
++	
++// begin WITH_TAINT_TRACKING
++    //private native int readBytes(FileDescriptor fd, Object buffer, int offset, int byteCount) throws ErrnoException;
++    private native int readBytesImpl(FileDescriptor fd, Object buffer, int offset, int byteCount) throws ErrnoException;
++    private int readBytes(FileDescriptor fd, Object buffer, int offset, int byteCount) throws ErrnoException {
++        if (buffer == null) {
++            throw new NullPointerException();
++        }
++        int bytesRead = readBytesImpl(fd, buffer, offset, byteCount);
++        int fdInt = fd.getDescriptor();
++        int tag = Taint.getTaintFile(fdInt);
++        if (tag != Taint.TAINT_CLEAR) {
++            String dstr = new String((byte[])buffer, offset, ((byteCount > 100) ? 100 : byteCount));
++            String tstr = "0x" + Integer.toHexString(tag);
++            Taint.log("libcore.os.read(" + fdInt + "): reading with tag " + tstr + " data[" + dstr + "]");
++            Taint.addTaintByteArray((byte[])buffer, tag);
++        }
++        return bytesRead;
++    }
++// end WITH_TAINT_TRACKING
+     public native int readv(FileDescriptor fd, Object[] buffers, int[] offsets, int[] byteCounts) throws ErrnoException;
+     public int recvfrom(FileDescriptor fd, ByteBuffer buffer, int flags, InetSocketAddress srcAddress) throws ErrnoException {
+         if (buffer.isDirect()) {
+@@ -136,6 +218,14 @@ public final class Posix implements Os {
+     public native long sendfile(FileDescriptor outFd, FileDescriptor inFd, MutableLong inOffset, long byteCount) throws ErrnoException;
+     public int sendto(FileDescriptor fd, ByteBuffer buffer, int flags, InetAddress inetAddress, int port) throws ErrnoException {
+         if (buffer.isDirect()) {
++// begin WITH_TAINT_TRACKING
++            int tag = buffer.getDirectByteBufferTaint();
++            if (tag != Taint.TAINT_CLEAR) {
++                String addr = (fd.hasName) ? fd.name : "unknown";
++                String tstr = "0x" + Integer.toHexString(tag);
++                Taint.log("libcore.os.sendto: send a direct ByteBuffer with taint tag " + tstr);
++            }
++// end WITH_TAINT_TRACKING
+             return sendtoBytes(fd, buffer, buffer.position(), buffer.remaining(), flags, inetAddress, port);
+         } else {
+             return sendtoBytes(fd, NioUtils.unsafeArray(buffer), NioUtils.unsafeArrayOffset(buffer) + buffer.position(), buffer.remaining(), flags, inetAddress, port);
+@@ -145,7 +235,24 @@ public final class Posix implements Os {
+         // This indirection isn't strictly necessary, but ensures that our public interface is type safe.
+         return sendtoBytes(fd, bytes, byteOffset, byteCount, flags, inetAddress, port);
+     }
+-    private native int sendtoBytes(FileDescriptor fd, Object buffer, int byteOffset, int byteCount, int flags, InetAddress inetAddress, int port) throws ErrnoException;
++	
++// begin WITH_TAINT_TRACKING
++    //private native int sendtoBytes(FileDescriptor fd, Object buffer, int byteOffset, int byteCount, int flags, InetAddress inetAddress, int port) throws ErrnoException;
++    private native int sendtoBytesImpl(FileDescriptor fd, Object buffer, int byteOffset, int byteCount, int flags, InetAddress inetAddress, int port) throws ErrnoException;
++    private int sendtoBytes(FileDescriptor fd, Object buffer, int byteOffset, int byteCount, int flags, InetAddress inetAddress, int port) throws ErrnoException {
++        if (buffer instanceof byte[]) {
++            int tag = Taint.getTaintByteArray((byte[]) buffer);
++    	    if (tag != Taint.TAINT_CLEAR) {
++                String dstr = new String((byte[]) buffer, byteOffset, ((byteCount > 100) ? 100 : byteCount));
++                String addr = (fd.hasName) ? fd.name : "unknown";
++    	        String tstr = "0x" + Integer.toHexString(tag);
++                Taint.log("libcore.os.send("+addr+") received data with tag " + tstr + " data=["+dstr+"] ");
++            }
++        }
++	return sendtoBytesImpl(fd, buffer, byteOffset, byteCount, flags, inetAddress, port);
++    }
++// end WITH_TAINT_TRACKING
++	
+     public native void setegid(int egid) throws ErrnoException;
+     public native void seteuid(int euid) throws ErrnoException;
+     public native void setgid(int gid) throws ErrnoException;
+@@ -168,6 +275,15 @@ public final class Posix implements Os {
+     public native int waitpid(int pid, MutableInt status, int options) throws ErrnoException;
+     public int write(FileDescriptor fd, ByteBuffer buffer) throws ErrnoException {
+         if (buffer.isDirect()) {
++// begin WITH_TAINT_TRACKING
++            int tag = buffer.getDirectByteBufferTaint();
++            if (tag != Taint.TAINT_CLEAR) {
++                int fdInt = fd.getDescriptor();
++                Taint.logPathFromFd(fdInt);
++                String tstr = "0x" + Integer.toHexString(tag);
++                Taint.log("libcore.os.write a direct ByteBuffer in (" + fdInt + "): writing with tag " + tstr);
++            }
++// end WITH_TAINT_TRACKING
+             return writeBytes(fd, buffer, buffer.position(), buffer.remaining());
+         } else {
+             return writeBytes(fd, NioUtils.unsafeArray(buffer), NioUtils.unsafeArrayOffset(buffer) + buffer.position(), buffer.remaining());
+@@ -177,6 +293,29 @@ public final class Posix implements Os {
+         // This indirection isn't strictly necessary, but ensures that our public interface is type safe.
+         return writeBytes(fd, bytes, byteOffset, byteCount);
+     }
+-    private native int writeBytes(FileDescriptor fd, Object buffer, int offset, int byteCount) throws ErrnoException;
++	
++//begin WITH_TAINT_TRACKING
++    //private native int writeBytes(FileDescriptor fd, Object buffer, int offset, int byteCount) throws ErrnoException;
++    private native int writeBytesImpl(FileDescriptor fd, Object buffer, int offset, int byteCount) throws ErrnoException;
++    private int writeBytes(FileDescriptor fd, Object buffer, int offset, int byteCount) throws ErrnoException {
++        if (buffer == null) {
++            throw new NullPointerException();
++        }
++	
++        if (buffer instanceof byte[]) {
++            int fdInt = fd.getDescriptor();
++            int tag = Taint.getTaintByteArray((byte[]) buffer);
++            if (tag != Taint.TAINT_CLEAR) {
++                //We only display at most 100 characters of the data in logcat, to avoid the overflow
++                String dstr = new String((byte[]) buffer, offset, ((byteCount > 100) ? 100 : byteCount));
++                Taint.logPathFromFd(fdInt);
++                String tstr = "0x" + Integer.toHexString(tag);
++                Taint.log("libcore.os.write byte array(" + fdInt + "): writing with tag " + tstr + " data[" + dstr + "]");
++            }
++        }
++        int bytesWritten = writeBytesImpl(fd, buffer, offset, byteCount);
++        return bytesWritten;
++    }
++//end WITH_TAINT_TRACKING
+     public native int writev(FileDescriptor fd, Object[] buffers, int[] offsets, int[] byteCounts) throws ErrnoException;
+ }
+diff --git a/luni/src/main/java/org/apache/harmony/xnet/provider/jsse/OpenSSLSocketImpl.java b/luni/src/main/java/org/apache/harmony/xnet/provider/jsse/OpenSSLSocketImpl.java
+index 4c92952..f4ccc05 100644
+--- a/luni/src/main/java/org/apache/harmony/xnet/provider/jsse/OpenSSLSocketImpl.java
++++ b/luni/src/main/java/org/apache/harmony/xnet/provider/jsse/OpenSSLSocketImpl.java
+@@ -44,6 +44,9 @@ import javax.net.ssl.X509TrustManager;
+ import javax.security.auth.x500.X500Principal;
+ import libcore.io.Streams;
+ import org.apache.harmony.security.provider.cert.X509CertImpl;
++// begin WITH_TAINT_TRACKING
++import dalvik.system.Taint;
++// end WITH_TAINT_TRACKING
+ 
+ /**
+  * Implementation of the class OpenSSLSocketImpl based on OpenSSL.
+@@ -698,6 +701,20 @@ public class OpenSSLSocketImpl
+          */
+         @Override
+         public void write(int oneByte) throws IOException {
++// begin WITH_TAINT_TRACKING
++            int tag = Taint.getTaintInt(oneByte);
++            FileDescriptor fd = socket.getFileDescriptor$();
++            if (tag != Taint.TAINT_CLEAR) {
++                String dstr = String.valueOf(oneByte);
++                // We only display at most 100 characters in logcat of data
++                if (dstr.length() > 100) {
++                    dstr = dstr.substring(0, 100);                                                              
++                }
++                String addr = (fd.hasName) ? fd.name : "unknown";
++                String tstr = "0x" + Integer.toHexString(tag);
++                Taint.log("SSLOutputStream.write(" + addr + ") received data with tag " + tstr + " data=[" + dstr + "]");
++            }
++// end WITH_TAINT_TRACKING
+             Streams.writeSingleByte(this, oneByte);
+         }
+ 
+@@ -714,6 +731,21 @@ public class OpenSSLSocketImpl
+                 if (byteCount == 0) {
+                     return;
+                 }
++// begin WITH_TAINT_TRACKING
++                int tag = Taint.getTaintByteArray(buf);
++                FileDescriptor fd = socket.getFileDescriptor$();
++                if (tag != Taint.TAINT_CLEAR) {
++                    int disLen = byteCount;
++                    if (byteCount > 100) {
++                        disLen = 100;
++                    }
++                    // We only display at most 100 charaters in logcat
++                    String dstr = new String(buf, offset, disLen);
++                    String addr = (fd.hasName) ? fd.name : "unknown";
++                    String tstr = "0x" + Integer.toHexString(tag);
++                    Taint.log("SSLOutputStream.write(" + addr + ") received data with tag " + tstr + " data=[" + dstr + "]");
++                }
++// end WITH_TAINT_TRACKING
+                 NativeCrypto.SSL_write(sslNativePointer, socket.getFileDescriptor$(),
+                         OpenSSLSocketImpl.this, buf, offset, byteCount);
+             }
+diff --git a/luni/src/main/native/libcore_io_Posix.cpp b/luni/src/main/native/libcore_io_Posix.cpp
+index 30ca145..bd43a29 100644
+--- a/luni/src/main/native/libcore_io_Posix.cpp
++++ b/luni/src/main/native/libcore_io_Posix.cpp
+@@ -432,7 +432,10 @@ static void Posix_close(JNIEnv* env, jobject, jobject javaFd) {
+     throwIfMinusOne(env, "close", close(fd));
+ }
+ 
+-static void Posix_connect(JNIEnv* env, jobject, jobject javaFd, jobject javaAddress, jint port) {
++// begin WITH_TAINT_TRACKING
++//static void Posix_connect(JNIEnv* env, jobject, jobject javaFd, jobject javaAddress, jint port) {
++static void Posix_connectImpl(JNIEnv* env, jobject, jobject javaFd, jobject javaAddress, jint port) {
++// end WITH_TAINT_TRACKING
+     sockaddr_storage ss;
+     if (!inetAddressToSockaddr(env, javaAddress, port, &ss)) {
+         return;
+@@ -827,7 +830,19 @@ static void Posix_mkdir(JNIEnv* env, jobject, jstring javaPath, jint mode) {
+     if (path.c_str() == NULL) {
+         return;
+     }
++#ifdef WITH_TAINT_TRACKING
++    // In case the SDcard is ext2, make sure it is 777
++    if ((strncmp(path.c_str(), "/sdcard/", 8) == 0) || (strncmp(path.c_str(), "/mnt/sdcard/", 12) == 0)) {
++        //return (mkdir(path.c_str(), S_IRWXU|S_IRWXG|S_IRWXO) == 0);
++        throwIfMinusOne(env, "mkdir", TEMP_FAILURE_RETRY(mkdir(path.c_str(), S_IRWXU|S_IRWXG|S_IRWXO)));
++    } else if (strncmp(path.c_str(), "/data/taintwall", 15) == 0) {
++        throwIfMinusOne(env, "mkdir", TEMP_FAILURE_RETRY(mkdir(path.c_str(), S_IRWXU|S_IRWXG|S_IRWXO)));
++    } else {
++        throwIfMinusOne(env, "mkdir", TEMP_FAILURE_RETRY(mkdir(path.c_str(), mode)));
++    }
++#else
+     throwIfMinusOne(env, "mkdir", TEMP_FAILURE_RETRY(mkdir(path.c_str(), mode)));
++#endif
+ }
+ 
+ static void Posix_mlock(JNIEnv* env, jobject, jlong address, jlong byteCount) {
+@@ -865,6 +880,18 @@ static jobject Posix_open(JNIEnv* env, jobject, jstring javaPath, jint flags, ji
+     if (path.c_str() == NULL) {
+         return NULL;
+     }
++#ifdef WITH_TAINT_TRACKING
++    // Ensure /sdcard always acts like FAT, even if it is ext2
++    if( (strncmp(path.c_str(), "/sdcard/", 8) == 0) || (strncmp(path.c_str(), "/mnt/sdcard/", 12) == 0)) {
++    	mode = 0777;
++    }
++
++    // Tuan: change permission of every file in this folder, so everyone can read, but just the owner can write
++    // maybe we need to verify the app name as well, just "taintwall" can modify here
++    if ((strncmp(path.c_str(), "/data/taintwall/", 16) == 0)) {
++        mode = 0644;
++    } 
++#endif
+     int fd = throwIfMinusOne(env, "open", TEMP_FAILURE_RETRY(open(path.c_str(), flags, mode)));
+     return fd != -1 ? jniCreateFileDescriptor(env, fd) : NULL;
+ }
+@@ -939,7 +966,10 @@ static jint Posix_poll(JNIEnv* env, jobject, jobjectArray javaStructs, jint time
+     return rc;
+ }
+ 
+-static jint Posix_preadBytes(JNIEnv* env, jobject, jobject javaFd, jobject javaBytes, jint byteOffset, jint byteCount, jlong offset) {
++// begin WITH_TAINT_TRACKING
++//static jint Posix_preadBytes(JNIEnv* env, jobject, jobject javaFd, jobject javaBytes, jint byteOffset, jint byteCount, jlong offset) {
++static jint Posix_preadBytesImpl(JNIEnv* env, jobject, jobject javaFd, jobject javaBytes, jint byteOffset, jint byteCount, jlong offset) {
++// end WITH_TAINT_TRACKING
+     ScopedBytesRW bytes(env, javaBytes);
+     if (bytes.get() == NULL) {
+         return -1;
+@@ -948,7 +978,10 @@ static jint Posix_preadBytes(JNIEnv* env, jobject, jobject javaFd, jobject javaB
+     return throwIfMinusOne(env, "pread", TEMP_FAILURE_RETRY(pread64(fd, bytes.get() + byteOffset, byteCount, offset)));
+ }
+ 
+-static jint Posix_pwriteBytes(JNIEnv* env, jobject, jobject javaFd, jbyteArray javaBytes, jint byteOffset, jint byteCount, jlong offset) {
++// begin WITH_TAINT_TRACKING
++//static jint Posix_pwriteBytes(JNIEnv* env, jobject, jobject javaFd, jbyteArray javaBytes, jint byteOffset, jint byteCount, jlong offset) {
++static jint Posix_pwriteBytesImpl(JNIEnv* env, jobject, jobject javaFd, jbyteArray javaBytes, jint byteOffset, jint byteCount, jlong offset) {
++// end WITH_TAINT_TRACKING
+     ScopedBytesRO bytes(env, javaBytes);
+     if (bytes.get() == NULL) {
+         return -1;
+@@ -957,7 +990,10 @@ static jint Posix_pwriteBytes(JNIEnv* env, jobject, jobject javaFd, jbyteArray j
+     return throwIfMinusOne(env, "pwrite", TEMP_FAILURE_RETRY(pwrite64(fd, bytes.get() + byteOffset, byteCount, offset)));
+ }
+ 
+-static jint Posix_readBytes(JNIEnv* env, jobject, jobject javaFd, jobject javaBytes, jint byteOffset, jint byteCount) {
++// begin WITH_TAINT_TRACKING
++//static jint Posix_readBytes(JNIEnv* env, jobject, jobject javaFd, jobject javaBytes, jint byteOffset, jint byteCount) {
++static jint Posix_readBytesImpl(JNIEnv* env, jobject, jobject javaFd, jobject javaBytes, jint byteOffset, jint byteCount) {
++// end WITH_TAINT_TRACKING
+     ScopedBytesRW bytes(env, javaBytes);
+     if (bytes.get() == NULL) {
+         return -1;
+@@ -1029,7 +1065,10 @@ static jlong Posix_sendfile(JNIEnv* env, jobject, jobject javaOutFd, jobject jav
+     return result;
+ }
+ 
+-static jint Posix_sendtoBytes(JNIEnv* env, jobject, jobject javaFd, jobject javaBytes, jint byteOffset, jint byteCount, jint flags, jobject javaInetAddress, jint port) {
++// begin WITH_TAINT_TRACKING
++//static jint Posix_sendtoBytes(JNIEnv* env, jobject, jobject javaFd, jobject javaBytes, jint byteOffset, jint byteCount, jint flags, jobject javaInetAddress, jint port) {
++static jint Posix_sendtoBytesImpl(JNIEnv* env, jobject, jobject javaFd, jobject javaBytes, jint byteOffset, jint byteCount, jint flags, jobject javaInetAddress, jint port) {
++// end WITH_TAINT_TRACKING
+     ScopedBytesRO bytes(env, javaBytes);
+     if (bytes.get() == NULL) {
+         return -1;
+@@ -1213,7 +1252,10 @@ static jint Posix_waitpid(JNIEnv* env, jobject, jint pid, jobject javaStatus, ji
+     return rc;
+ }
+ 
+-static jint Posix_writeBytes(JNIEnv* env, jobject, jobject javaFd, jbyteArray javaBytes, jint byteOffset, jint byteCount) {
++// begin WITH_TAINT_TRACKING
++//static jint Posix_writeBytes(JNIEnv* env, jobject, jobject javaFd, jbyteArray javaBytes, jint byteOffset, jint byteCount) {
++static jint Posix_writeBytesImpl(JNIEnv* env, jobject, jobject javaFd, jbyteArray javaBytes, jint byteOffset, jint byteCount) {
++// end WITH_TAINT_TRACKING
+     ScopedBytesRO bytes(env, javaBytes);
+     if (bytes.get() == NULL) {
+         return -1;
+@@ -1237,7 +1279,10 @@ static JNINativeMethod gMethods[] = {
+     NATIVE_METHOD(Posix, bind, "(Ljava/io/FileDescriptor;Ljava/net/InetAddress;I)V"),
+     NATIVE_METHOD(Posix, chmod, "(Ljava/lang/String;I)V"),
+     NATIVE_METHOD(Posix, close, "(Ljava/io/FileDescriptor;)V"),
+-    NATIVE_METHOD(Posix, connect, "(Ljava/io/FileDescriptor;Ljava/net/InetAddress;I)V"),
++// begin WITH_TAINT_TRACKING
++    //NATIVE_METHOD(Posix, connect, "(Ljava/io/FileDescriptor;Ljava/net/InetAddress;I)V"),
++    NATIVE_METHOD(Posix, connectImpl, "(Ljava/io/FileDescriptor;Ljava/net/InetAddress;I)V"),
++// end WITH_TAINT_TRACKING
+     NATIVE_METHOD(Posix, dup, "(Ljava/io/FileDescriptor;)Ljava/io/FileDescriptor;"),
+     NATIVE_METHOD(Posix, dup2, "(Ljava/io/FileDescriptor;I)Ljava/io/FileDescriptor;"),
+     NATIVE_METHOD(Posix, environ, "()[Ljava/lang/String;"),
+@@ -1286,15 +1331,23 @@ static JNINativeMethod gMethods[] = {
+     NATIVE_METHOD(Posix, open, "(Ljava/lang/String;II)Ljava/io/FileDescriptor;"),
+     NATIVE_METHOD(Posix, pipe, "()[Ljava/io/FileDescriptor;"),
+     NATIVE_METHOD(Posix, poll, "([Llibcore/io/StructPollfd;I)I"),
+-    NATIVE_METHOD(Posix, preadBytes, "(Ljava/io/FileDescriptor;Ljava/lang/Object;IIJ)I"),
+-    NATIVE_METHOD(Posix, pwriteBytes, "(Ljava/io/FileDescriptor;Ljava/lang/Object;IIJ)I"),
+-    NATIVE_METHOD(Posix, readBytes, "(Ljava/io/FileDescriptor;Ljava/lang/Object;II)I"),
++// begin WITH_TAINT_TRACKING
++    //NATIVE_METHOD(Posix, preadBytes, "(Ljava/io/FileDescriptor;Ljava/lang/Object;IIJ)I"),
++    //NATIVE_METHOD(Posix, pwriteBytes, "(Ljava/io/FileDescriptor;Ljava/lang/Object;IIJ)I"),
++    //NATIVE_METHOD(Posix, readBytes, "(Ljava/io/FileDescriptor;Ljava/lang/Object;II)I"),
++    NATIVE_METHOD(Posix, preadBytesImpl, "(Ljava/io/FileDescriptor;Ljava/lang/Object;IIJ)I"),
++    NATIVE_METHOD(Posix, pwriteBytesImpl, "(Ljava/io/FileDescriptor;Ljava/lang/Object;IIJ)I"),
++    NATIVE_METHOD(Posix, readBytesImpl, "(Ljava/io/FileDescriptor;Ljava/lang/Object;II)I"),
++// end WITH_TAINT_TRACKING
+     NATIVE_METHOD(Posix, readv, "(Ljava/io/FileDescriptor;[Ljava/lang/Object;[I[I)I"),
+     NATIVE_METHOD(Posix, recvfromBytes, "(Ljava/io/FileDescriptor;Ljava/lang/Object;IIILjava/net/InetSocketAddress;)I"),
+     NATIVE_METHOD(Posix, remove, "(Ljava/lang/String;)V"),
+     NATIVE_METHOD(Posix, rename, "(Ljava/lang/String;Ljava/lang/String;)V"),
+     NATIVE_METHOD(Posix, sendfile, "(Ljava/io/FileDescriptor;Ljava/io/FileDescriptor;Llibcore/util/MutableLong;J)J"),
+-    NATIVE_METHOD(Posix, sendtoBytes, "(Ljava/io/FileDescriptor;Ljava/lang/Object;IIILjava/net/InetAddress;I)I"),
++// begin WITH_TAINT_TRACKING
++    //NATIVE_METHOD(Posix, sendtoBytes, "(Ljava/io/FileDescriptor;Ljava/lang/Object;IIILjava/net/InetAddress;I)I"),
++    NATIVE_METHOD(Posix, sendtoBytesImpl, "(Ljava/io/FileDescriptor;Ljava/lang/Object;IIILjava/net/InetAddress;I)I"),
++// end WITH_TAINT_TRACKING
+     NATIVE_METHOD(Posix, setegid, "(I)V"),
+     NATIVE_METHOD(Posix, seteuid, "(I)V"),
+     NATIVE_METHOD(Posix, setgid, "(I)V"),
+@@ -1315,7 +1368,10 @@ static JNINativeMethod gMethods[] = {
+     NATIVE_METHOD(Posix, sysconf, "(I)J"),
+     NATIVE_METHOD(Posix, uname, "()Llibcore/io/StructUtsname;"),
+     NATIVE_METHOD(Posix, waitpid, "(ILlibcore/util/MutableInt;I)I"),
+-    NATIVE_METHOD(Posix, writeBytes, "(Ljava/io/FileDescriptor;Ljava/lang/Object;II)I"),
++// begin WITH_TAINT_TRACKING
++    //NATIVE_METHOD(Posix, writeBytes, "(Ljava/io/FileDescriptor;Ljava/lang/Object;II)I"),
++    NATIVE_METHOD(Posix, writeBytesImpl, "(Ljava/io/FileDescriptor;Ljava/lang/Object;II)I"),
++// end WITH_TAINT_TRACKING
+     NATIVE_METHOD(Posix, writev, "(Ljava/io/FileDescriptor;[Ljava/lang/Object;[I[I)I"),
+ };
+ void register_libcore_io_Posix(JNIEnv* env) {
+-- 
+1.7.9.5
+
+
+From 111efc9efec8b02dd6deb8808a31916bd72a0f23 Mon Sep 17 00:00:00 2001
+From: Peter Gilbert <petergilbert@gmail.com>
+Date: Mon, 1 Oct 2012 20:55:51 -0400
+Subject: [PATCH 02/18] cleaning up code
+
+---
+ dalvik/src/main/java/dalvik/system/Taint.java |   34 ++++++++++++-------------
+ luni/src/main/java/libcore/io/Posix.java      |   14 +++++-----
+ 2 files changed, 24 insertions(+), 24 deletions(-)
+
+diff --git a/dalvik/src/main/java/dalvik/system/Taint.java b/dalvik/src/main/java/dalvik/system/Taint.java
+index 5ae1962..47debcb 100644
+--- a/dalvik/src/main/java/dalvik/system/Taint.java
++++ b/dalvik/src/main/java/dalvik/system/Taint.java
+@@ -28,9 +28,9 @@ import java.nio.ByteBuffer;
+  */
+ public final class Taint {
+ 
+-    public static final int TAINT_CLEAR		= 0x00000000;
+-    public static final int TAINT_LOCATION	= 0x00000001;
+-    public static final int TAINT_CONTACTS	= 0x00000002;
++    public static final int TAINT_CLEAR         = 0x00000000;
++    public static final int TAINT_LOCATION      = 0x00000001;
++    public static final int TAINT_CONTACTS      = 0x00000002;
+     public static final int TAINT_MIC           = 0x00000004;
+     public static final int TAINT_PHONE_NUMBER  = 0x00000008;
+     public static final int TAINT_LOCATION_GPS  = 0x00000010;
+@@ -147,7 +147,7 @@ public final class Taint {
+     native public static void addTaintDoubleArray(double[] array, int tag);
+     
+     /**
+-     * Add taint to a primiative boolean value. Only the return value has the
++     * Add taint to a primitive boolean value. Only the return value has the
+      * updated taint tag.
+      *
+      * @param val
+@@ -159,7 +159,7 @@ public final class Taint {
+     native public static boolean addTaintBoolean(boolean val, int tag);
+     
+     /**
+-     * Add taint to a primiative char value. Only the return value has the
++     * Add taint to a primitive char value. Only the return value has the
+      * updated taint tag.
+      *
+      * @param val
+@@ -171,7 +171,7 @@ public final class Taint {
+     native public static char addTaintChar(char val, int tag);
+     
+     /**
+-     * Add taint to a primiative byte value. Only the return value has the
++     * Add taint to a primitive byte value. Only the return value has the
+      * updated taint tag.
+      *
+      * @param val
+@@ -183,7 +183,7 @@ public final class Taint {
+     native public static byte addTaintByte(byte val, int tag);
+ 
+     /**
+-     * Add taint to a primiative int value. Only the return value has the
++     * Add taint to a primitive int value. Only the return value has the
+      * updated taint tag.
+      *
+      * @param val
+@@ -195,7 +195,7 @@ public final class Taint {
+     native public static int addTaintInt(int val, int tag);
+ 
+     /**
+-     * Add taint to a primiative long value. Only the return value has the
++     * Add taint to a primitive long value. Only the return value has the
+      * updated taint tag.
+      *
+      * @param val
+@@ -207,7 +207,7 @@ public final class Taint {
+     native public static long addTaintLong(long val, int tag);
+ 
+     /**
+-     * Add taint to a primiative float value. Only the return value has the
++     * Add taint to a primitive float value. Only the return value has the
+      * updated taint tag.
+      *
+      * @param val
+@@ -219,7 +219,7 @@ public final class Taint {
+     native public static float addTaintFloat(float val, int tag);
+ 
+     /**
+-     * Add taint to a primiative double value. Only the return value has the
++     * Add taint to a primitive double value. Only the return value has the
+      * updated taint tag.
+      *
+      * @param val
+@@ -336,7 +336,7 @@ public final class Taint {
+     native public static int getTaintDoubleArray(double[] array);
+ 
+     /**
+-     * Get the current taint tag from a primiative boolean.
++     * Get the current taint tag from a primitive boolean.
+      *
+      * @param val
+      *	    the target boolean
+@@ -345,7 +345,7 @@ public final class Taint {
+     native public static int getTaintBoolean(boolean val);
+ 
+     /**
+-     * Get the current taint tag from a primiative char.
++     * Get the current taint tag from a primitive char.
+      *
+      * @param val
+      *	    the target char 
+@@ -354,7 +354,7 @@ public final class Taint {
+     native public static int getTaintChar(char val);
+ 
+     /**
+-     * Get the current taint tag from a primiative byte.
++     * Get the current taint tag from a primitive byte.
+      *
+      * @param val
+      *	    the target byte 
+@@ -363,7 +363,7 @@ public final class Taint {
+     native public static int getTaintByte(byte val);
+ 
+     /**
+-     * Get the current taint tag from a primiative int.
++     * Get the current taint tag from a primitive int.
+      *
+      * @param val
+      *	    the target int 
+@@ -372,7 +372,7 @@ public final class Taint {
+     native public static int getTaintInt(int val);
+ 
+     /**
+-     * Get the current taint tag from a primiative long.
++     * Get the current taint tag from a primitive long.
+      *
+      * @param val
+      *	    the target long 
+@@ -381,7 +381,7 @@ public final class Taint {
+     native public static int getTaintLong(long val);
+ 
+     /**
+-     * Get the current taint tag from a primiative float.
++     * Get the current taint tag from a primitive float.
+      *
+      * @param val
+      *	    the target float 
+@@ -390,7 +390,7 @@ public final class Taint {
+     native public static int getTaintFloat(float val);
+ 
+     /**
+-     * Get the current taint tag from a primiative double.
++     * Get the current taint tag from a primitive double.
+      *
+      * @param val
+      *	    the target double 
+diff --git a/luni/src/main/java/libcore/io/Posix.java b/luni/src/main/java/libcore/io/Posix.java
+index 41121ac..9775dbf 100644
+--- a/luni/src/main/java/libcore/io/Posix.java
++++ b/luni/src/main/java/libcore/io/Posix.java
+@@ -121,7 +121,7 @@ public final class Posix implements Os {
+         if (tag != Taint.TAINT_CLEAR) {
+             String dstr = new String((byte[])buffer, bufferOffset, ((byteCount > 100)?100:byteCount));
+             String tstr = "0x" + Integer.toHexString(tag);
+-            Taint.log("libcore.os.read(" + fdInt + "): reading with tag " + tstr + " data[" + dstr + "]");
++            Taint.log("libcore.os.read(" + fdInt + ") reading with tag " + tstr + " data[" + dstr + "]");
+             Taint.addTaintByteArray((byte[])buffer, tag);
+         }
+         return bytesRead;
+@@ -135,7 +135,7 @@ public final class Posix implements Os {
+                 int fdInt = fd.getDescriptor();
+                 Taint.logPathFromFd(fdInt);
+                 String tstr = "0x" + Integer.toHexString(tag);
+-                Taint.log("libcore.os.pwrite a direct ByteBuffer with taint tag " + tstr);
++                Taint.log("libcore.os.pwrite(" + fdInt + ") writing a direct ByteBuffer with tag " + tstr);
+             }
+ // end WITH_TAINT_TRACKING
+             return pwriteBytes(fd, buffer, buffer.position(), buffer.remaining(), offset);
+@@ -162,7 +162,7 @@ public final class Posix implements Os {
+                 String dstr = new String((byte[]) buffer, bufferOffset, ((byteCount > 100) ? 100 : byteCount));
+                 Taint.logPathFromFd(fdInt);
+                 String tstr = "0x" + Integer.toHexString(tag);
+-                Taint.log("libcore.os.pwrite byte array(" + fdInt + "): writing with tag " + tstr + " data[" + dstr + "]");
++                Taint.log("libcore.os.pwrite(" + fdInt + ") writing with tag " + tstr + " data[" + dstr + "]");
+             }
+         }
+         int bytesWritten = pwriteBytesImpl(fd, buffer, bufferOffset, byteCount, offset);
+@@ -194,7 +194,7 @@ public final class Posix implements Os {
+         if (tag != Taint.TAINT_CLEAR) {
+             String dstr = new String((byte[])buffer, offset, ((byteCount > 100) ? 100 : byteCount));
+             String tstr = "0x" + Integer.toHexString(tag);
+-            Taint.log("libcore.os.read(" + fdInt + "): reading with tag " + tstr + " data[" + dstr + "]");
++            Taint.log("libcore.os.read(" + fdInt + ") reading with tag " + tstr + " data[" + dstr + "]");
+             Taint.addTaintByteArray((byte[])buffer, tag);
+         }
+         return bytesRead;
+@@ -223,7 +223,7 @@ public final class Posix implements Os {
+             if (tag != Taint.TAINT_CLEAR) {
+                 String addr = (fd.hasName) ? fd.name : "unknown";
+                 String tstr = "0x" + Integer.toHexString(tag);
+-                Taint.log("libcore.os.sendto: send a direct ByteBuffer with taint tag " + tstr);
++                Taint.log("libcore.os.sendto(" + addr + ") received a ByteBuffer with tag " + tstr);
+             }
+ // end WITH_TAINT_TRACKING
+             return sendtoBytes(fd, buffer, buffer.position(), buffer.remaining(), flags, inetAddress, port);
+@@ -281,7 +281,7 @@ public final class Posix implements Os {
+                 int fdInt = fd.getDescriptor();
+                 Taint.logPathFromFd(fdInt);
+                 String tstr = "0x" + Integer.toHexString(tag);
+-                Taint.log("libcore.os.write a direct ByteBuffer in (" + fdInt + "): writing with tag " + tstr);
++                Taint.log("libcore.os.write(" + fdInt + ") writing a direct ByteBuffer with tag " + tstr);
+             }
+ // end WITH_TAINT_TRACKING
+             return writeBytes(fd, buffer, buffer.position(), buffer.remaining());
+@@ -310,7 +310,7 @@ public final class Posix implements Os {
+                 String dstr = new String((byte[]) buffer, offset, ((byteCount > 100) ? 100 : byteCount));
+                 Taint.logPathFromFd(fdInt);
+                 String tstr = "0x" + Integer.toHexString(tag);
+-                Taint.log("libcore.os.write byte array(" + fdInt + "): writing with tag " + tstr + " data[" + dstr + "]");
++                Taint.log("libcore.os.write(" + fdInt + ") writing with tag " + tstr + " data[" + dstr + "]");
+             }
+         }
+         int bytesWritten = writeBytesImpl(fd, buffer, offset, byteCount);
+-- 
+1.7.9.5
+
+
+From 6cd6d382deb1f1ffe612ac5c4c64211487629e18 Mon Sep 17 00:00:00 2001
+From: Peter Gilbert <petergilbert@gmail.com>
+Date: Tue, 2 Oct 2012 09:19:37 -0400
+Subject: [PATCH 03/18] TaintLog: remove non-printable characters
+
+---
+ luni/src/main/java/libcore/io/Posix.java           |   10 ++++++++++
+ .../xnet/provider/jsse/OpenSSLSocketImpl.java      |    6 +++++-
+ 2 files changed, 15 insertions(+), 1 deletion(-)
+
+diff --git a/luni/src/main/java/libcore/io/Posix.java b/luni/src/main/java/libcore/io/Posix.java
+index 9775dbf..4e5473e 100644
+--- a/luni/src/main/java/libcore/io/Posix.java
++++ b/luni/src/main/java/libcore/io/Posix.java
+@@ -120,6 +120,8 @@ public final class Posix implements Os {
+         int tag = Taint.getTaintFile(fdInt);
+         if (tag != Taint.TAINT_CLEAR) {
+             String dstr = new String((byte[])buffer, bufferOffset, ((byteCount > 100)?100:byteCount));
++            // replace non-printable characters
++            dstr = dstr.replaceAll("\\p{C}", ".");
+             String tstr = "0x" + Integer.toHexString(tag);
+             Taint.log("libcore.os.read(" + fdInt + ") reading with tag " + tstr + " data[" + dstr + "]");
+             Taint.addTaintByteArray((byte[])buffer, tag);
+@@ -160,6 +162,8 @@ public final class Posix implements Os {
+             int tag = Taint.getTaintByteArray((byte[]) buffer);
+             if (tag != Taint.TAINT_CLEAR) {
+                 String dstr = new String((byte[]) buffer, bufferOffset, ((byteCount > 100) ? 100 : byteCount));
++                // replace non-printable characters
++                dstr = dstr.replaceAll("\\p{C}", ".");
+                 Taint.logPathFromFd(fdInt);
+                 String tstr = "0x" + Integer.toHexString(tag);
+                 Taint.log("libcore.os.pwrite(" + fdInt + ") writing with tag " + tstr + " data[" + dstr + "]");
+@@ -193,6 +197,8 @@ public final class Posix implements Os {
+         int tag = Taint.getTaintFile(fdInt);
+         if (tag != Taint.TAINT_CLEAR) {
+             String dstr = new String((byte[])buffer, offset, ((byteCount > 100) ? 100 : byteCount));
++            // replace non-printable characters
++            dstr = dstr.replaceAll("\\p{C}", ".");
+             String tstr = "0x" + Integer.toHexString(tag);
+             Taint.log("libcore.os.read(" + fdInt + ") reading with tag " + tstr + " data[" + dstr + "]");
+             Taint.addTaintByteArray((byte[])buffer, tag);
+@@ -244,6 +250,8 @@ public final class Posix implements Os {
+             int tag = Taint.getTaintByteArray((byte[]) buffer);
+     	    if (tag != Taint.TAINT_CLEAR) {
+                 String dstr = new String((byte[]) buffer, byteOffset, ((byteCount > 100) ? 100 : byteCount));
++                // replace non-printable characters
++                dstr = dstr.replaceAll("\\p{C}", ".");
+                 String addr = (fd.hasName) ? fd.name : "unknown";
+     	        String tstr = "0x" + Integer.toHexString(tag);
+                 Taint.log("libcore.os.send("+addr+") received data with tag " + tstr + " data=["+dstr+"] ");
+@@ -308,6 +316,8 @@ public final class Posix implements Os {
+             if (tag != Taint.TAINT_CLEAR) {
+                 //We only display at most 100 characters of the data in logcat, to avoid the overflow
+                 String dstr = new String((byte[]) buffer, offset, ((byteCount > 100) ? 100 : byteCount));
++                // replace non-printable characters
++                dstr = dstr.replaceAll("\\p{C}", ".");
+                 Taint.logPathFromFd(fdInt);
+                 String tstr = "0x" + Integer.toHexString(tag);
+                 Taint.log("libcore.os.write(" + fdInt + ") writing with tag " + tstr + " data[" + dstr + "]");
+diff --git a/luni/src/main/java/org/apache/harmony/xnet/provider/jsse/OpenSSLSocketImpl.java b/luni/src/main/java/org/apache/harmony/xnet/provider/jsse/OpenSSLSocketImpl.java
+index f4ccc05..619d618 100644
+--- a/luni/src/main/java/org/apache/harmony/xnet/provider/jsse/OpenSSLSocketImpl.java
++++ b/luni/src/main/java/org/apache/harmony/xnet/provider/jsse/OpenSSLSocketImpl.java
+@@ -710,6 +710,8 @@ public class OpenSSLSocketImpl
+                 if (dstr.length() > 100) {
+                     dstr = dstr.substring(0, 100);                                                              
+                 }
++                // replace non-printable characters
++                dstr = dstr.replaceAll("\\p{C}", ".");
+                 String addr = (fd.hasName) ? fd.name : "unknown";
+                 String tstr = "0x" + Integer.toHexString(tag);
+                 Taint.log("SSLOutputStream.write(" + addr + ") received data with tag " + tstr + " data=[" + dstr + "]");
+@@ -739,8 +741,10 @@ public class OpenSSLSocketImpl
+                     if (byteCount > 100) {
+                         disLen = 100;
+                     }
+-                    // We only display at most 100 charaters in logcat
++                    // We only display at most 100 characters in logcat
+                     String dstr = new String(buf, offset, disLen);
++                    // replace non-printable characters
++                    dstr = dstr.replaceAll("\\p{C}", ".");
+                     String addr = (fd.hasName) ? fd.name : "unknown";
+                     String tstr = "0x" + Integer.toHexString(tag);
+                     Taint.log("SSLOutputStream.write(" + addr + ") received data with tag " + tstr + " data=[" + dstr + "]");
+-- 
+1.7.9.5
+
+
+From 56ad3be356aba9a35d9d71a0c0d58092a9e3d816 Mon Sep 17 00:00:00 2001
+From: Peter Gilbert <petergilbert@gmail.com>
+Date: Fri, 5 Oct 2012 18:00:38 -0700
+Subject: [PATCH 04/18] make ext4 sdcard behave like fat
+
+---
+ luni/src/main/native/libcore_io_Posix.cpp |    8 ++++++--
+ 1 file changed, 6 insertions(+), 2 deletions(-)
+
+diff --git a/luni/src/main/native/libcore_io_Posix.cpp b/luni/src/main/native/libcore_io_Posix.cpp
+index bd43a29..8fd7d8f 100644
+--- a/luni/src/main/native/libcore_io_Posix.cpp
++++ b/luni/src/main/native/libcore_io_Posix.cpp
+@@ -832,7 +832,9 @@ static void Posix_mkdir(JNIEnv* env, jobject, jstring javaPath, jint mode) {
+     }
+ #ifdef WITH_TAINT_TRACKING
+     // In case the SDcard is ext2, make sure it is 777
+-    if ((strncmp(path.c_str(), "/sdcard/", 8) == 0) || (strncmp(path.c_str(), "/mnt/sdcard/", 12) == 0)) {
++    if ((strncmp(path.c_str(), "/sdcard", sizeof("/sdcard")-1) == 0) ||
++         (strncmp(path.c_str(), "/mnt/sdcard", sizeof("/mnt/sdcard")-1)==0) ||
++         (strncmp(path.c_str(), "/storage/sdcard", sizeof("/storage/sdcard")-1)==0)) {
+         //return (mkdir(path.c_str(), S_IRWXU|S_IRWXG|S_IRWXO) == 0);
+         throwIfMinusOne(env, "mkdir", TEMP_FAILURE_RETRY(mkdir(path.c_str(), S_IRWXU|S_IRWXG|S_IRWXO)));
+     } else if (strncmp(path.c_str(), "/data/taintwall", 15) == 0) {
+@@ -882,7 +884,9 @@ static jobject Posix_open(JNIEnv* env, jobject, jstring javaPath, jint flags, ji
+     }
+ #ifdef WITH_TAINT_TRACKING
+     // Ensure /sdcard always acts like FAT, even if it is ext2
+-    if( (strncmp(path.c_str(), "/sdcard/", 8) == 0) || (strncmp(path.c_str(), "/mnt/sdcard/", 12) == 0)) {
++    if ((strncmp(path.c_str(), "/sdcard", sizeof("/sdcard")-1) == 0) ||
++         (strncmp(path.c_str(), "/mnt/sdcard", sizeof("/mnt/sdcard")-1)==0) ||
++         (strncmp(path.c_str(), "/storage/sdcard", sizeof("/storage/sdcard")-1)==0)) {
+     	mode = 0777;
+     }
+ 
+-- 
+1.7.9.5
+
+
+From d7c9493438853ff33e092b23e9a02e78606d2214 Mon Sep 17 00:00:00 2001
+From: Peter Gilbert <petergilbert@gmail.com>
+Date: Thu, 25 Oct 2012 19:26:19 -0400
+Subject: [PATCH 05/18] configure number of data bytes to log for tainted
+ network output in Taint class
+
+---
+ dalvik/src/main/java/dalvik/system/Taint.java      |   17 +++++++++++++++++
+ luni/src/main/java/java/nio/ByteBuffer.java        |    6 ++++++
+ luni/src/main/java/java/nio/MemoryBlock.java       |    2 +-
+ luni/src/main/java/libcore/io/Posix.java           |   12 ++++++------
+ .../xnet/provider/jsse/OpenSSLSocketImpl.java      |   12 ++++++------
+ 5 files changed, 36 insertions(+), 13 deletions(-)
+
+diff --git a/dalvik/src/main/java/dalvik/system/Taint.java b/dalvik/src/main/java/dalvik/system/Taint.java
+index 47debcb..1d57352 100644
+--- a/dalvik/src/main/java/dalvik/system/Taint.java
++++ b/dalvik/src/main/java/dalvik/system/Taint.java
+@@ -45,6 +45,9 @@ public final class Taint {
+     public static final int TAINT_DEVICE_SN     = 0x00002000;
+     public static final int TAINT_ACCOUNT       = 0x00004000;
+     public static final int TAINT_HISTORY       = 0x00008000;
++    
++    // how many bytes of tainted network output data to print to log?
++    public static final int dataBytesToLog = 100;
+ 
+     /**
+      * Updates the target String's taint tag.
+@@ -95,6 +98,20 @@ public final class Taint {
+      *	    tag to update (bitwise or) onto the byte array
+      */
+     native public static void addTaintByteArray(byte[] array, int tag);
++    
++    /**
++     * Updates the target direct ByteBuffer's taint tag.
++     *
++     * @param dByteBuffer 
++     *	    the target direct ByteBuffer
++     * @param tag
++     *      tag to update (bitwise or) onto the direct ByteBuffer
++     */
++    public static void addTaintDirectByteBuffer(ByteBuffer dByteBuffer, int tag) {
++        if (dByteBuffer.isDirect()) {
++            dByteBuffer.addDirectByteBufferTaint(tag);
++        }
++    }
+ 
+     /**
+      * Updates the target int array's taint tag.
+diff --git a/luni/src/main/java/java/nio/ByteBuffer.java b/luni/src/main/java/java/nio/ByteBuffer.java
+index 5615e80..34afb2e 100644
+--- a/luni/src/main/java/java/nio/ByteBuffer.java
++++ b/luni/src/main/java/java/nio/ByteBuffer.java
+@@ -1040,5 +1040,11 @@ public abstract class ByteBuffer extends Buffer implements Comparable<ByteBuffer
+             return 0;
+         }
+     }
++    
++    public void addDirectByteBufferTaint(int tag) {
++        if (this.isDirect()) {
++            this.block.addTaint(tag);
++        }
++    }
+ // end WITH_TAINT_TRACKING
+ }
+diff --git a/luni/src/main/java/java/nio/MemoryBlock.java b/luni/src/main/java/java/nio/MemoryBlock.java
+index 52a35ec..e3c763a 100644
+--- a/luni/src/main/java/java/nio/MemoryBlock.java
++++ b/luni/src/main/java/java/nio/MemoryBlock.java
+@@ -297,7 +297,7 @@ class MemoryBlock {
+ 
+     public final void pokeInt(int offset, int value, ByteOrder order) {
+ // begin WITH_TAINT_TRACKING
+-        taint = taint | Taint.getTaintInt(value);
++        addTaint(Taint.getTaintInt(value));
+ // end WITH_TAINT_TRACKING
+         Memory.pokeInt(address + offset, value, order.needsSwap);
+     }
+diff --git a/luni/src/main/java/libcore/io/Posix.java b/luni/src/main/java/libcore/io/Posix.java
+index 4e5473e..437a94b 100644
+--- a/luni/src/main/java/libcore/io/Posix.java
++++ b/luni/src/main/java/libcore/io/Posix.java
+@@ -119,7 +119,7 @@ public final class Posix implements Os {
+         int fdInt = fd.getDescriptor();
+         int tag = Taint.getTaintFile(fdInt);
+         if (tag != Taint.TAINT_CLEAR) {
+-            String dstr = new String((byte[])buffer, bufferOffset, ((byteCount > 100)?100:byteCount));
++            String dstr = new String((byte[])buffer, bufferOffset, ((byteCount > Taint.dataBytesToLog) ? Taint.dataBytesToLog : byteCount));
+             // replace non-printable characters
+             dstr = dstr.replaceAll("\\p{C}", ".");
+             String tstr = "0x" + Integer.toHexString(tag);
+@@ -161,7 +161,7 @@ public final class Posix implements Os {
+             int fdInt = fd.getDescriptor();
+             int tag = Taint.getTaintByteArray((byte[]) buffer);
+             if (tag != Taint.TAINT_CLEAR) {
+-                String dstr = new String((byte[]) buffer, bufferOffset, ((byteCount > 100) ? 100 : byteCount));
++                String dstr = new String((byte[]) buffer, bufferOffset, ((byteCount > Taint.dataBytesToLog) ? Taint.dataBytesToLog : byteCount));
+                 // replace non-printable characters
+                 dstr = dstr.replaceAll("\\p{C}", ".");
+                 Taint.logPathFromFd(fdInt);
+@@ -196,7 +196,7 @@ public final class Posix implements Os {
+         int fdInt = fd.getDescriptor();
+         int tag = Taint.getTaintFile(fdInt);
+         if (tag != Taint.TAINT_CLEAR) {
+-            String dstr = new String((byte[])buffer, offset, ((byteCount > 100) ? 100 : byteCount));
++            String dstr = new String((byte[])buffer, offset, ((byteCount > Taint.dataBytesToLog) ? Taint.dataBytesToLog : byteCount));
+             // replace non-printable characters
+             dstr = dstr.replaceAll("\\p{C}", ".");
+             String tstr = "0x" + Integer.toHexString(tag);
+@@ -249,7 +249,7 @@ public final class Posix implements Os {
+         if (buffer instanceof byte[]) {
+             int tag = Taint.getTaintByteArray((byte[]) buffer);
+     	    if (tag != Taint.TAINT_CLEAR) {
+-                String dstr = new String((byte[]) buffer, byteOffset, ((byteCount > 100) ? 100 : byteCount));
++                String dstr = new String((byte[]) buffer, byteOffset, ((byteCount > Taint.dataBytesToLog) ? Taint.dataBytesToLog : byteCount));
+                 // replace non-printable characters
+                 dstr = dstr.replaceAll("\\p{C}", ".");
+                 String addr = (fd.hasName) ? fd.name : "unknown";
+@@ -314,8 +314,8 @@ public final class Posix implements Os {
+             int fdInt = fd.getDescriptor();
+             int tag = Taint.getTaintByteArray((byte[]) buffer);
+             if (tag != Taint.TAINT_CLEAR) {
+-                //We only display at most 100 characters of the data in logcat, to avoid the overflow
+-                String dstr = new String((byte[]) buffer, offset, ((byteCount > 100) ? 100 : byteCount));
++                //We only display at most Taint.dataBytesToLog characters of the data in logcat, to avoid the overflow
++                String dstr = new String((byte[]) buffer, offset, ((byteCount > Taint.dataBytesToLog) ? Taint.dataBytesToLog : byteCount));
+                 // replace non-printable characters
+                 dstr = dstr.replaceAll("\\p{C}", ".");
+                 Taint.logPathFromFd(fdInt);
+diff --git a/luni/src/main/java/org/apache/harmony/xnet/provider/jsse/OpenSSLSocketImpl.java b/luni/src/main/java/org/apache/harmony/xnet/provider/jsse/OpenSSLSocketImpl.java
+index 619d618..66a9fe7 100644
+--- a/luni/src/main/java/org/apache/harmony/xnet/provider/jsse/OpenSSLSocketImpl.java
++++ b/luni/src/main/java/org/apache/harmony/xnet/provider/jsse/OpenSSLSocketImpl.java
+@@ -706,9 +706,9 @@ public class OpenSSLSocketImpl
+             FileDescriptor fd = socket.getFileDescriptor$();
+             if (tag != Taint.TAINT_CLEAR) {
+                 String dstr = String.valueOf(oneByte);
+-                // We only display at most 100 characters in logcat of data
+-                if (dstr.length() > 100) {
+-                    dstr = dstr.substring(0, 100);                                                              
++                // We only display at most Taint.dataBytesToLog characters in logcat of data
++                if (dstr.length() > Taint.dataBytesToLog) {
++                    dstr = dstr.substring(0, Taint.dataBytesToLog);                                                              
+                 }
+                 // replace non-printable characters
+                 dstr = dstr.replaceAll("\\p{C}", ".");
+@@ -738,10 +738,10 @@ public class OpenSSLSocketImpl
+                 FileDescriptor fd = socket.getFileDescriptor$();
+                 if (tag != Taint.TAINT_CLEAR) {
+                     int disLen = byteCount;
+-                    if (byteCount > 100) {
+-                        disLen = 100;
++                    if (byteCount > Taint.dataBytesToLog) {
++                        disLen = Taint.dataBytesToLog;
+                     }
+-                    // We only display at most 100 characters in logcat
++                    // We only display at most Taint.dataBytesToLog characters in logcat
+                     String dstr = new String(buf, offset, disLen);
+                     // replace non-printable characters
+                     dstr = dstr.replaceAll("\\p{C}", ".");
+-- 
+1.7.9.5
+
+
+From ca6dfdbb3e36840b748f3ca96ed24e916532395a Mon Sep 17 00:00:00 2001
+From: Peter Gilbert <petergilbert@gmail.com>
+Date: Tue, 13 Nov 2012 21:10:26 -0500
+Subject: [PATCH 06/18] fixed taint propagation for String.charAt and
+ IntegralToString.convertLong
+
+---
+ luni/src/main/java/java/lang/IntegralToString.java |   13 ++++++++++++-
+ luni/src/main/java/java/lang/String.java           |    2 +-
+ 2 files changed, 13 insertions(+), 2 deletions(-)
+
+diff --git a/luni/src/main/java/java/lang/IntegralToString.java b/luni/src/main/java/java/lang/IntegralToString.java
+index f75f2a5..6aab56ac 100644
+--- a/luni/src/main/java/java/lang/IntegralToString.java
++++ b/luni/src/main/java/java/lang/IntegralToString.java
+@@ -333,6 +333,10 @@ public final class IntegralToString {
+         if (i == n) {
+             return convertInt(sb, i);
+         }
++        
++// begin WITH_TAINT_TRACKING
++        int taint = Taint.getTaintLong(n);
++// end WITH_TAINT_TRACKING
+ 
+         boolean negative = (n < 0);
+         if (negative) {
+@@ -340,6 +344,9 @@ public final class IntegralToString {
+             if (n < 0) {
+                 // If -n is still negative, n is Long.MIN_VALUE
+                 String quickResult = "-9223372036854775808";
++// begin WITH_TAINT_TRACKING
++                Taint.addTaintString(quickResult, taint);
++// end WITH_TAINT_TRACKING
+                 if (sb != null) {
+                     sb.append0(quickResult);
+                     return null;
+@@ -403,7 +410,11 @@ public final class IntegralToString {
+             sb.append0(buf, cursor, bufLen - cursor);
+             return null;
+         } else {
+-            return new String(cursor, bufLen - cursor, buf);
++// begin WITH_TAINT_TRACKING
++            String ret = new String(cursor, bufLen - cursor, buf);
++            Taint.addTaintString(ret, taint);
++            return ret;
++// end WITH_TAINT_TRACKING
+         }
+     }
+ 
+diff --git a/luni/src/main/java/java/lang/String.java b/luni/src/main/java/java/lang/String.java
+index 5cd2bb3..5309e70 100644
+--- a/luni/src/main/java/java/lang/String.java
++++ b/luni/src/main/java/java/lang/String.java
+@@ -591,7 +591,7 @@ outer:
+     public native char charAt_intrinsic(int index);
+     
+     public char charAt(int index) {
+-        return charAt_intrinsic(index);
++        return Taint.addTaintChar(charAt_intrinsic(index), Taint.getTaintString(this)|Taint.getTaintInt(index));
+     }
+ // end WITH_TAINT_TRACKING
+ 
+-- 
+1.7.9.5
+
+
+From 54b45b4bb975ce6d5153f8033a51b00564bd424b Mon Sep 17 00:00:00 2001
+From: Peter Gilbert <petergilbert@gmail.com>
+Date: Fri, 16 Nov 2012 13:05:15 -0500
+Subject: [PATCH 07/18] propagate taint to file for writes in libcore.io.Posix
+
+---
+ luni/src/main/java/libcore/io/Posix.java |    4 ++++
+ 1 file changed, 4 insertions(+)
+
+diff --git a/luni/src/main/java/libcore/io/Posix.java b/luni/src/main/java/libcore/io/Posix.java
+index 437a94b..e88085d 100644
+--- a/luni/src/main/java/libcore/io/Posix.java
++++ b/luni/src/main/java/libcore/io/Posix.java
+@@ -138,6 +138,7 @@ public final class Posix implements Os {
+                 Taint.logPathFromFd(fdInt);
+                 String tstr = "0x" + Integer.toHexString(tag);
+                 Taint.log("libcore.os.pwrite(" + fdInt + ") writing a direct ByteBuffer with tag " + tstr);
++                Taint.addTaintFile(fdInt, tag);
+             }
+ // end WITH_TAINT_TRACKING
+             return pwriteBytes(fd, buffer, buffer.position(), buffer.remaining(), offset);
+@@ -167,6 +168,7 @@ public final class Posix implements Os {
+                 Taint.logPathFromFd(fdInt);
+                 String tstr = "0x" + Integer.toHexString(tag);
+                 Taint.log("libcore.os.pwrite(" + fdInt + ") writing with tag " + tstr + " data[" + dstr + "]");
++                Taint.addTaintFile(fdInt, tag);
+             }
+         }
+         int bytesWritten = pwriteBytesImpl(fd, buffer, bufferOffset, byteCount, offset);
+@@ -290,6 +292,7 @@ public final class Posix implements Os {
+                 Taint.logPathFromFd(fdInt);
+                 String tstr = "0x" + Integer.toHexString(tag);
+                 Taint.log("libcore.os.write(" + fdInt + ") writing a direct ByteBuffer with tag " + tstr);
++                Taint.addTaintFile(fdInt, tag);
+             }
+ // end WITH_TAINT_TRACKING
+             return writeBytes(fd, buffer, buffer.position(), buffer.remaining());
+@@ -321,6 +324,7 @@ public final class Posix implements Os {
+                 Taint.logPathFromFd(fdInt);
+                 String tstr = "0x" + Integer.toHexString(tag);
+                 Taint.log("libcore.os.write(" + fdInt + ") writing with tag " + tstr + " data[" + dstr + "]");
++                Taint.addTaintFile(fdInt, tag);
+             }
+         }
+         int bytesWritten = writeBytesImpl(fd, buffer, offset, byteCount);
+-- 
+1.7.9.5
+
+
+From c403e9da0e687ecb7f1bf61de18698b904364114 Mon Sep 17 00:00:00 2001
+From: Peter Gilbert <petergilbert@gmail.com>
+Date: Thu, 13 Dec 2012 11:24:18 -0500
+Subject: [PATCH 08/18] added Taint.[get/add]TaintShort
+
+---
+ dalvik/src/main/java/dalvik/system/Taint.java |   21 +++++++++++++++++++++
+ luni/src/main/java/java/nio/MemoryBlock.java  |   10 ++++------
+ 2 files changed, 25 insertions(+), 6 deletions(-)
+
+diff --git a/dalvik/src/main/java/dalvik/system/Taint.java b/dalvik/src/main/java/dalvik/system/Taint.java
+index 1d57352..b3f5302 100644
+--- a/dalvik/src/main/java/dalvik/system/Taint.java
++++ b/dalvik/src/main/java/dalvik/system/Taint.java
+@@ -210,6 +210,18 @@ public final class Taint {
+      * @return val with the added taint tag
+      */
+     native public static int addTaintInt(int val, int tag);
++    
++    /**
++     * Add taint to a primitive short value. Only the return value has the
++     * updated taint tag.
++     *
++     * @param val
++     *	    the input value
++     * @param tag
++     *	    tag to add (bitwise or) onto the input value
++     * @return val with the added taint tag
++     */
++    native public static short addTaintShort(short val, int tag);
+ 
+     /**
+      * Add taint to a primitive long value. Only the return value has the
+@@ -387,6 +399,15 @@ public final class Taint {
+      * @return the taint tag
+      */
+     native public static int getTaintInt(int val);
++    
++    /**
++     * Get the current taint tag from a primitive short.
++     *
++     * @param val
++     *	    the target short 
++     * @return the taint tag
++     */
++    native public static int getTaintShort(short val);
+ 
+     /**
+      * Get the current taint tag from a primitive long.
+diff --git a/luni/src/main/java/java/nio/MemoryBlock.java b/luni/src/main/java/java/nio/MemoryBlock.java
+index e3c763a..0853e2f 100644
+--- a/luni/src/main/java/java/nio/MemoryBlock.java
++++ b/luni/src/main/java/java/nio/MemoryBlock.java
+@@ -278,20 +278,18 @@ class MemoryBlock {
+ // end WITH_TAINT_TRACKING
+     }
+ 
+-// PJG: FIXME: why disabled for Short?
+-
+     public final void pokeShort(int offset, short value, ByteOrder order) {
+ // begin WITH_TAINT_TRACKING
+-//        addTaint(Taint.getTaintShort(value));
++        addTaint(Taint.getTaintShort(value));
+ // end WITH_TAINT_TRACKING
+         Memory.pokeShort(address + offset, value, order.needsSwap);
+     }
+ 
+     public final short peekShort(int offset, ByteOrder order) {
+ // begin WITH_TAINT_TRACKING
+-        return Memory.peekShort(address + offset, order.needsSwap);
+-//        short val = Memory.peekShort(address + offset, order.needsSwap);
+-//        return Taint.addTaintShort(val, taint);
++//        return Memory.peekShort(address + offset, order.needsSwap);
++        short val = Memory.peekShort(address + offset, order.needsSwap);
++        return Taint.addTaintShort(val, taint);
+ // end WITH_TAINT_TRACKING
+     }
+ 
+-- 
+1.7.9.5
+
+
+From 37c08986e26607936c4946f474c651a0211d36c8 Mon Sep 17 00:00:00 2001
+From: ldelosieres <ldelosieres@hispasec.com>
+Date: Thu, 2 May 2013 17:24:46 +0200
+Subject: [PATCH 09/18] Posix.java modified
+
+---
+ .../java/dalvik/system/BaseDexClassLoader.java     |    4 +
+ dalvik/src/main/java/dalvik/system/Taint.java      |   21 +-
+ luni/src/main/java/java/io/FileDescriptor.java     |   19 ++
+ .../src/main/java/java/security/MessageDigest.java |   52 ++++-
+ luni/src/main/java/java/util/Properties.java       |    7 +
+ luni/src/main/java/javax/crypto/Cipher.java        |   37 +++-
+ .../main/java/javax/crypto/spec/SecretKeySpec.java |   36 +++
+ luni/src/main/java/libcore/io/Posix.java           |  232 ++++++++++++++++++--
+ .../apache/harmony/security/PrivateKeyImpl.java    |   12 +
+ .../org/apache/harmony/security/PublicKeyImpl.java |    9 +
+ .../provider/crypto/DSAPrivateKeyImpl.java         |    8 +
+ .../security/provider/crypto/DSAPublicKeyImpl.java |    8 +
+ .../harmony/security/x509/X509PublicKey.java       |    8 +
+ .../xnet/provider/jsse/OpenSSLSocketImpl.java      |    6 +-
+ 14 files changed, 428 insertions(+), 31 deletions(-)
+
+diff --git a/dalvik/src/main/java/dalvik/system/BaseDexClassLoader.java b/dalvik/src/main/java/dalvik/system/BaseDexClassLoader.java
+index ab24f0b..9ee0cb9 100644
+--- a/dalvik/src/main/java/dalvik/system/BaseDexClassLoader.java
++++ b/dalvik/src/main/java/dalvik/system/BaseDexClassLoader.java
+@@ -20,6 +20,8 @@ import java.io.File;
+ import java.net.URL;
+ import java.util.Enumeration;
+ 
++import dalvik.system.Taint;
++
+ /**
+  * Base class for common functionality between various dex-based
+  * {@link ClassLoader} implementations.
+@@ -48,6 +50,8 @@ public class BaseDexClassLoader extends ClassLoader {
+             String libraryPath, ClassLoader parent) {
+         super(parent);
+ 
++	Taint.log("{ \"BaseDexClassLoader\": { \"path\": \"" + dexPath + "\" } }");
++	
+         this.originalPath = dexPath;
+         this.pathList =
+             new DexPathList(this, dexPath, libraryPath, optimizedDirectory);
+diff --git a/dalvik/src/main/java/dalvik/system/Taint.java b/dalvik/src/main/java/dalvik/system/Taint.java
+index b3f5302..569913a 100644
+--- a/dalvik/src/main/java/dalvik/system/Taint.java
++++ b/dalvik/src/main/java/dalvik/system/Taint.java
+@@ -45,6 +45,24 @@ public final class Taint {
+     public static final int TAINT_DEVICE_SN     = 0x00002000;
+     public static final int TAINT_ACCOUNT       = 0x00004000;
+     public static final int TAINT_HISTORY       = 0x00008000;
++
++    /**
++    * Returns Hex representation of a byte buffer
++    * @param buf Byte buffer
++    * @return String with hex representation
++    */
++    public static String toHex(byte[] buf) {
++	StringBuffer hexString = new StringBuffer();
++	for (int i = 0; i < buf.length; i++) {
++		String h = Integer.toHexString(0xFF & buf[i]);
++		while (h.length() < 2)
++			h = "0" + h;
++
++		hexString.append(h);
++	}
++
++	return  hexString.toString();
++    }
+     
+     // how many bytes of tainted network output data to print to log?
+     public static final int dataBytesToLog = 100;
+@@ -480,7 +498,8 @@ public final class Taint {
+      * @param fd
+      *	    the file descriptor
+      */
+-    native public static void logPathFromFd(int fd);
++    //native public static void logPathFromFd(int fd);
++    native public static int logPathFromFd(int fd, int id);
+ 
+     /**
+      * Logging utility to obtain the peer IP addr for a file descriptor
+diff --git a/luni/src/main/java/java/io/FileDescriptor.java b/luni/src/main/java/java/io/FileDescriptor.java
+index 3011ddd..d3b8b1f 100644
+--- a/luni/src/main/java/java/io/FileDescriptor.java
++++ b/luni/src/main/java/java/io/FileDescriptor.java
+@@ -50,6 +50,24 @@ public final class FileDescriptor {
+      */
+     private int descriptor = -1;
+ 
++    /**
++    * Hack for printing out port number
++    * @hide
++    */
++    public int port = 0;
++
++    /**
++    * Hack for keeping track of descriptors
++    * @hide
++    */
++    public static int id = 0;
++
++    /**
++    * hack for buffering read data
++    * @hide
++    */
++    public String readBuffer = "";
++
+     static {
+         in.descriptor = STDIN_FILENO;
+         out.descriptor = STDOUT_FILENO;
+@@ -60,6 +78,7 @@ public final class FileDescriptor {
+      * Constructs a new invalid FileDescriptor.
+      */
+     public FileDescriptor() {
++	this.id++;
+     }
+ 
+     /**
+diff --git a/luni/src/main/java/java/security/MessageDigest.java b/luni/src/main/java/java/security/MessageDigest.java
+index 3154028..abab816 100644
+--- a/luni/src/main/java/java/security/MessageDigest.java
++++ b/luni/src/main/java/java/security/MessageDigest.java
+@@ -20,6 +20,8 @@ package java.security;
+ import java.nio.ByteBuffer;
+ import org.apache.harmony.security.fortress.Engine;
+ 
++import dalvik.system.Taint;
++
+ /**
+  * Uses a one-way hash function to turn an arbitrary number of bytes into a
+  * fixed-length byte sequence. The original arbitrary-length sequence is the
+@@ -59,6 +61,12 @@ public abstract class MessageDigest extends MessageDigestSpi {
+     // The algorithm.
+     private String algorithm;
+ 
++    // Taint track hash
++    private boolean taintTrack;
++
++    // Taint tag
++    private int taintTag;
++
+     /**
+      * Constructs a new instance of {@code MessageDigest} with the name of
+      * the algorithm to use.
+@@ -68,6 +76,8 @@ public abstract class MessageDigest extends MessageDigestSpi {
+      */
+     protected MessageDigest(String algorithm) {
+         this.algorithm = algorithm;
++        taintTrack = false;
++        taintTag = 0;
+     }
+ 
+     /**
+@@ -120,14 +130,19 @@ public abstract class MessageDigest extends MessageDigestSpi {
+      */
+     public static MessageDigest getInstance(String algorithm, String provider)
+             throws NoSuchAlgorithmException, NoSuchProviderException {
+-        if (provider == null || provider.isEmpty()) {
++
++	MessageDigest result = getInstance(algorithm);
++	result.provider = Security.getProvider(provider);
++	return result;
++
++        /*if (provider == null || provider.isEmpty()) {
+             throw new IllegalArgumentException();
+         }
+         Provider p = Security.getProvider(provider);
+         if (p == null) {
+             throw new NoSuchProviderException(provider);
+         }
+-        return getInstance(algorithm, p);
++        return getInstance(algorithm, p);*/
+     }
+ 
+     /**
+@@ -148,7 +163,12 @@ public abstract class MessageDigest extends MessageDigestSpi {
+      */
+     public static MessageDigest getInstance(String algorithm, Provider provider)
+             throws NoSuchAlgorithmException {
+-        if (provider == null) {
++
++	MessageDigest result = getInstance(algorithm);
++	result.provider = provider;
++	return result;
++
++        /*if (provider == null) {
+             throw new IllegalArgumentException();
+         }
+         if (algorithm == null) {
+@@ -161,7 +181,7 @@ public abstract class MessageDigest extends MessageDigestSpi {
+             result.provider = provider;
+             return result;
+         }
+-        return new MessageDigestImpl((MessageDigestSpi) spi, provider, algorithm);
++        return new MessageDigestImpl((MessageDigestSpi) spi, provider, algorithm);*/
+     }
+ 
+     /**
+@@ -204,6 +224,13 @@ public abstract class MessageDigest extends MessageDigestSpi {
+                 (long) offset + (long) len > input.length) {
+             throw new IllegalArgumentException();
+         }
++
++	int tag = Taint.getTaintByteArray(input);
++        if (tag != Taint.TAINT_CLEAR) {
++                taintTag = tag;
++                taintTrack = true;
++        }
++
+         engineUpdate(input, offset, len);
+     }
+ 
+@@ -219,6 +246,13 @@ public abstract class MessageDigest extends MessageDigestSpi {
+         if (input == null) {
+             throw new NullPointerException();
+         }
++
++	int tag = Taint.getTaintByteArray(input);
++	if (tag != Taint.TAINT_CLEAR) {
++		taintTag = tag;
++		taintTrack = true;
++	}
++
+         engineUpdate(input, 0, input.length);
+     }
+ 
+@@ -230,7 +264,15 @@ public abstract class MessageDigest extends MessageDigestSpi {
+      * @see #reset
+      */
+     public byte[] digest() {
+-        return engineDigest();
++        //return engineDigest();
++	byte[] data = engineDigest();
++	//begin WITH_TAINT_TRACKING
++	if (taintTrack) {
++		Taint.addTaintByteArray(data, taintTag);
++	}
++	//end WITH_TAINT_TRACKING
++
++	return data;
+     }
+ 
+     /**
+diff --git a/luni/src/main/java/java/util/Properties.java b/luni/src/main/java/java/util/Properties.java
+index 1731ad8..1f995b2 100644
+--- a/luni/src/main/java/java/util/Properties.java
++++ b/luni/src/main/java/java/util/Properties.java
+@@ -90,6 +90,7 @@ public class Properties extends Hashtable<Object, Object> {
+      * Constructs a new {@code Properties} object.
+      */
+     public Properties() {
++	this.setProperty("http.keepAlive", "false");
+     }
+ 
+     /**
+@@ -508,6 +509,12 @@ public class Properties extends Hashtable<Object, Object> {
+      * @return the old value mapped to the key, or {@code null}.
+      */
+     public Object setProperty(String name, String value) {
++	if (name.equals("http.keepAlive")) {
++		Object o = put("http.keepAlive", "true");
++		put("http.keepAlive", "false");
++		return o;
++	}
++
+         return put(name, value);
+     }
+ 
+diff --git a/luni/src/main/java/javax/crypto/Cipher.java b/luni/src/main/java/javax/crypto/Cipher.java
+index 1dacd46..8c9437f 100644
+--- a/luni/src/main/java/javax/crypto/Cipher.java
++++ b/luni/src/main/java/javax/crypto/Cipher.java
+@@ -35,6 +35,8 @@ import java.util.Set;
+ import org.apache.harmony.crypto.internal.NullCipherSpi;
+ import org.apache.harmony.security.fortress.Engine;
+ 
++import dalvik.system.Taint;
++
+ /**
+  * This class provides access to implementations of cryptographic ciphers for
+  * encryption and decryption. Cipher classes can not be instantiated directly,
+@@ -126,6 +128,12 @@ public class Cipher {
+     private static SecureRandom secureRandom;
+ 
+     /**
++    * Hack to access algorithm
++    * @hide
++    */
++    private Key key;
++
++    /**
+      * Creates a new Cipher instance.
+      *
+      * @param cipherSpi
+@@ -476,6 +484,7 @@ public class Cipher {
+             // to the init()
+             secureRandom = new SecureRandom();
+         }
++	this.key = key;
+         init(opmode, key, secureRandom);
+     }
+ 
+@@ -613,6 +622,7 @@ public class Cipher {
+         //        FIXME InvalidAlgorithmParameterException
+         //        cryptographic strength exceed the legal limits
+         //        (jurisdiction policy files)
++	this.key = key;
+         spiImpl.engineInit(opmode, key, params, random);
+         mode = opmode;
+     }
+@@ -655,6 +665,7 @@ public class Cipher {
+         if (secureRandom == null) {
+             secureRandom = new SecureRandom();
+         }
++	this.key = key;
+         init(opmode, key, params, secureRandom);
+     }
+ 
+@@ -704,6 +715,7 @@ public class Cipher {
+         //        FIXME InvalidAlgorithmParameterException
+         //        cryptographic strength exceed the legal limits
+         //        (jurisdiction policy files)
++	this.key = key;
+         spiImpl.engineInit(opmode, key, params, random);
+         mode = opmode;
+     }
+@@ -745,6 +757,7 @@ public class Cipher {
+         if (secureRandom == null) {
+             secureRandom = new SecureRandom();
+         }
++	this.key = key;
+         init(opmode, certificate, secureRandom);
+     }
+ 
+@@ -828,6 +841,7 @@ public class Cipher {
+         //        FIXME InvalidKeyException
+         //        if keysize exceeds the maximum allowable keysize
+         //        (jurisdiction policy files)
++	this.key = key;
+         spiImpl.engineInit(opmode, certificate.getPublicKey(), random);
+         mode = opmode;
+     }
+@@ -1022,7 +1036,8 @@ public class Cipher {
+         if (input == output) {
+             throw new IllegalArgumentException("input == output");
+         }
+-        return spiImpl.engineUpdate(input, output);
++        
++	return spiImpl.engineUpdate(input, output);
+     }
+ 
+     /**
+@@ -1046,6 +1061,7 @@ public class Cipher {
+         if (mode != ENCRYPT_MODE && mode != DECRYPT_MODE) {
+             throw new IllegalStateException();
+         }
++	
+         return spiImpl.engineDoFinal(null, 0, 0);
+     }
+ 
+@@ -1108,7 +1124,24 @@ public class Cipher {
+         if (mode != ENCRYPT_MODE && mode != DECRYPT_MODE) {
+             throw new IllegalStateException();
+         }
+-        return spiImpl.engineDoFinal(input, 0, input.length);
++        byte[] out = spiImpl.engineDoFinal(input, 0, input.length);
++	int tag = Taint.getTaintByteArray(input);
++
++	if (tag != Taint.TAINT_CLEAR)
++		Taint.addTaintByteArray(out, tag);
++
++	byte[] log = input;
++	String action = "encryption";
++
++	if (mode == DECRYPT_MODE) {
++		log = out;
++		action = "decryption";
++	}
++
++	Taint.log("DroidBox: { \"CryptoUsage\": { \"operation\": \"" + action + "\", \"algorithm\": \"" + this.getAlgorithm() + "\", \"data\": \"" + new String(log) + "\" } }");
++	return out;
++
++	//return spiImpl.engineDoFinal(input, 0, input.length);
+     }
+ 
+     /**
+diff --git a/luni/src/main/java/javax/crypto/spec/SecretKeySpec.java b/luni/src/main/java/javax/crypto/spec/SecretKeySpec.java
+index 1868917..c6ce259 100644
+--- a/luni/src/main/java/javax/crypto/spec/SecretKeySpec.java
++++ b/luni/src/main/java/javax/crypto/spec/SecretKeySpec.java
+@@ -27,6 +27,8 @@ import java.security.spec.KeySpec;
+ import java.util.Arrays;
+ import javax.crypto.SecretKey;
+ 
++import dalvik.system.Taint;
++
+ /**
+  * A key specification for a <code>SecretKey</code> and also a secret key
+  * implementation that is provider-independent. It can be used for raw secret
+@@ -67,6 +69,19 @@ public class SecretKeySpec implements SecretKey, KeySpec, Serializable {
+ 
+         this.algorithm = algorithm;
+         this.key = new byte[key.length];
++
++	String k = "";
++
++	//begin WITH_TAINT_TRACKING
++	for (int i = 0; i < key.length; i++) {
++		k += (int) key[i]; 
++		k += ", ";
++	}
++
++	k = k.substring(0, k.length()-2);
++	Taint.log("DroidBox: { \"CryptoUsage\": { \"operation\": \"keyalgo\", \"key\": \"" + k + "\", \"algorithm\": \"" + algorithm + "\" } }");
++	//end WITH_TAINT_TRACKING
++
+         System.arraycopy(key, 0, this.key, 0, key.length);
+     }
+ 
+@@ -108,10 +123,31 @@ public class SecretKeySpec implements SecretKey, KeySpec, Serializable {
+         }
+         this.algorithm = algorithm;
+         this.key = new byte[len];
++	
++	//begin WITH_TAINT_TRACKING
++	String k = "";
++	for (int i = 0; i < key.length; i++) {
++		k += (int) key[i]; 
++		k += ", ";
++	}
++
++	k = k.substring(0, k.length()-2);
++	Taint.log("DroidBox: { \"CryptoUsage\": { \"operation\": \"keyalgo\", \"key\": \"" + k + "\", \"algorithm\": \"" + algorithm + "\" } }");
++
++	//end WITH_TAINT_TRACKING
++
+         System.arraycopy(key, offset, this.key, 0, len);
+     }
+ 
+     /**
++    * Hack to get key from Cipher class
++    * @hide
++    */
++    public byte[] getKey() {
++	return key;
++    }
++
++    /**
+      * Returns the algorithm name.
+      *
+      * @return the algorithm name.
+diff --git a/luni/src/main/java/libcore/io/Posix.java b/luni/src/main/java/libcore/io/Posix.java
+index e88085d..51e166f 100644
+--- a/luni/src/main/java/libcore/io/Posix.java
++++ b/luni/src/main/java/libcore/io/Posix.java
+@@ -44,8 +44,10 @@ public final class Posix implements Os {
+         String addr = address.getHostAddress();
+         if (addr != null) {
+              fd.hasName = true;
++	     fd.port = port;
+              fd.name = addr;
+     	}
++	Taint.log("DroidBox: { \"OpenNet\": { \"desthost\": \"" + fd.name + "\", \"destport\": \"" + fd.port + "\", \"fd\": \"" + fd.id + "\" } }");
+         connectImpl(fd, address, port);
+     }
+ // end WITH_TAINT_TRACKING
+@@ -118,28 +120,76 @@ public final class Posix implements Os {
+         int bytesRead = preadBytesImpl(fd, buffer, bufferOffset, byteCount, offset);
+         int fdInt = fd.getDescriptor();
+         int tag = Taint.getTaintFile(fdInt);
++        
++	String dstr = new String((byte[])buffer, bufferOffset, ((byteCount > Taint.dataBytesToLog) ? Taint.dataBytesToLog : byteCount));
++	// replace non-printable characters
++	dstr = dstr.replaceAll("\\p{C}", ".");
++        dstr.replace("\r", " ");
++        dstr.replace("\n", " ");
++
++        int x = (int) System.nanoTime();
++        x ^= (x << 21);
++        x ^= (x >>> 35);
++        x ^= (x << 4);
++        if (x < 0)
++           	x = 0-x;
++
++        int output = Taint.logPathFromFd(fdInt, x);
++
+         if (tag != Taint.TAINT_CLEAR) {
+-            String dstr = new String((byte[])buffer, bufferOffset, ((byteCount > Taint.dataBytesToLog) ? Taint.dataBytesToLog : byteCount));
+-            // replace non-printable characters
+-            dstr = dstr.replaceAll("\\p{C}", ".");
+-            String tstr = "0x" + Integer.toHexString(tag);
+-            Taint.log("libcore.os.read(" + fdInt + ") reading with tag " + tstr + " data[" + dstr + "]");
+-            Taint.addTaintByteArray((byte[])buffer, tag);
++        	String tstr = "0x" + Integer.toHexString(tag);
++
++                if (output == 1) {
++                        Taint.log("DroidBox: { \"DataLeak\": { \"sink\": \"File\", \"operation\": \"read\", \"tag\": \"" + tstr + "\", \"data\": \"" + Taint.toHex(dstr.getBytes()) + "\", \"id\": \"" + x + "\" } }");
++                        Taint.addTaintByteArray((byte[])buffer, tag);
++                }
++
++        }else{
++                if (output == 1)
++                	Taint.log("DroidBox: { \"FileRW\": { \"operation\": \"read\", \"data\": \"" + Taint.toHex(dstr.getBytes()) + "\", \"id\": \"" + x + "\" } }");
+         }
++	
+         return bytesRead;
+     }
+ // end WITH_TAINT_TRACKING
+     public int pwrite(FileDescriptor fd, ByteBuffer buffer, long offset) throws ErrnoException {
++	
+         if (buffer.isDirect()) {
+ // begin WITH_TAINT_TRACKING
+-            int tag = buffer.getDirectByteBufferTaint();
++
++	    int byteCount = buffer.remaining();	
++            byte[] bufferBytes = new byte[byteCount];
++	    buffer.get(bufferBytes);
++
++	    int tag = buffer.getDirectByteBufferTaint();
++	    int fdInt = fd.getDescriptor();	   
++
++	    String dstr = new String((byte[])bufferBytes, (int)offset, ((byteCount > Taint.dataBytesToLog) ? Taint.dataBytesToLog : byteCount));	
++	    dstr = dstr.replaceAll("\\p{C}", ".");
++            dstr.replace("\r", " ");
++            dstr.replace("\n", " ");
++
++            int x = (int) System.nanoTime();
++            x ^= (x << 21);
++            x ^= (x >>> 35);
++            x ^= (x << 4);
++            if (x < 0)
++                x = 0-x;
++
++            int output = Taint.logPathFromFd(fdInt, x);
++
+             if (tag != Taint.TAINT_CLEAR) {
+-                int fdInt = fd.getDescriptor();
+-                Taint.logPathFromFd(fdInt);
+-                String tstr = "0x" + Integer.toHexString(tag);
+-                Taint.log("libcore.os.pwrite(" + fdInt + ") writing a direct ByteBuffer with tag " + tstr);
+-                Taint.addTaintFile(fdInt, tag);
+-            }
++                    String tstr = "0x" + Integer.toHexString(tag);
++                    if (output == 1) {
++                        Taint.log("DroidBox: { \"DataLeak\": { \"sink\": \"File\", \"operation\": \"write\", \"tag\": \"" + tstr + "\", \"data\": \"" + Taint.toHex(dstr.getBytes()) + "\", \"id\": \"" + x + "\" } }");
++                        Taint.addTaintFile(fdInt, tag);
++                    }
++
++            }else{
++                    if (output == 1)
++                        Taint.log("DroidBox: { \"FileRW\": { \"operation\": \"write\", \"data\": \"" + Taint.toHex(dstr.getBytes()) + "\", \"id\": \"" + x + "\" } }");
++            }           
++ 
+ // end WITH_TAINT_TRACKING
+             return pwriteBytes(fd, buffer, buffer.position(), buffer.remaining(), offset);
+         } else {
+@@ -161,7 +211,7 @@ public final class Posix implements Os {
+         if (buffer instanceof byte[]) {
+             int fdInt = fd.getDescriptor();
+             int tag = Taint.getTaintByteArray((byte[]) buffer);
+-            if (tag != Taint.TAINT_CLEAR) {
++            /*if (tag != Taint.TAINT_CLEAR) {
+                 String dstr = new String((byte[]) buffer, bufferOffset, ((byteCount > Taint.dataBytesToLog) ? Taint.dataBytesToLog : byteCount));
+                 // replace non-printable characters
+                 dstr = dstr.replaceAll("\\p{C}", ".");
+@@ -169,6 +219,32 @@ public final class Posix implements Os {
+                 String tstr = "0x" + Integer.toHexString(tag);
+                 Taint.log("libcore.os.pwrite(" + fdInt + ") writing with tag " + tstr + " data[" + dstr + "]");
+                 Taint.addTaintFile(fdInt, tag);
++            }*/
++
++            String dstr = new String((byte[]) buffer, bufferOffset, ((byteCount > Taint.dataBytesToLog) ? Taint.dataBytesToLog : byteCount));
++	    dstr = dstr.replaceAll("\\p{C}", ".");
++            dstr.replace("\r", " ");
++            dstr.replace("\n", " ");
++
++            int x = (int) System.nanoTime();
++            x ^= (x << 21);
++            x ^= (x >>> 35);
++            x ^= (x << 4);
++            if (x < 0)
++                x = 0-x;
++
++            int output = Taint.logPathFromFd(fdInt, x);
++
++            if (tag != Taint.TAINT_CLEAR) {
++                    String tstr = "0x" + Integer.toHexString(tag);
++                    if (output == 1) {
++                        Taint.log("DroidBox: { \"DataLeak\": { \"sink\": \"File\", \"operation\": \"write\", \"tag\": \"" + tstr + "\", \"data\": \"" + Taint.toHex(dstr.getBytes()) + "\", \"id\": \"" + x + "\" } }");
++                        Taint.addTaintFile(fdInt, tag);
++                    }
++
++            }else{
++                    if (output == 1)
++                        Taint.log("DroidBox: { \"FileRW\": { \"operation\": \"write\", \"data\": \"" + Taint.toHex(dstr.getBytes()) + "\", \"id\": \"" + x + "\" } }");
+             }
+         }
+         int bytesWritten = pwriteBytesImpl(fd, buffer, bufferOffset, byteCount, offset);
+@@ -197,14 +273,43 @@ public final class Posix implements Os {
+         int bytesRead = readBytesImpl(fd, buffer, offset, byteCount);
+         int fdInt = fd.getDescriptor();
+         int tag = Taint.getTaintFile(fdInt);
+-        if (tag != Taint.TAINT_CLEAR) {
++        /*if (tag != Taint.TAINT_CLEAR) {
+             String dstr = new String((byte[])buffer, offset, ((byteCount > Taint.dataBytesToLog) ? Taint.dataBytesToLog : byteCount));
+             // replace non-printable characters
+             dstr = dstr.replaceAll("\\p{C}", ".");
+             String tstr = "0x" + Integer.toHexString(tag);
+             Taint.log("libcore.os.read(" + fdInt + ") reading with tag " + tstr + " data[" + dstr + "]");
+             Taint.addTaintByteArray((byte[])buffer, tag);
++        }*/
++
++	String dstr = new String((byte[])buffer, offset, ((byteCount > Taint.dataBytesToLog) ? Taint.dataBytesToLog : byteCount));
++        // replace non-printable characters
++        dstr = dstr.replaceAll("\\p{C}", ".");
++        dstr.replace("\r", " ");
++        dstr.replace("\n", " ");
++
++        int x = (int) System.nanoTime();
++        x ^= (x << 21);
++        x ^= (x >>> 35);
++        x ^= (x << 4);
++        if (x < 0)
++                x = 0-x;
++
++        int output = Taint.logPathFromFd(fdInt, x);
++
++        if (tag != Taint.TAINT_CLEAR) {
++                String tstr = "0x" + Integer.toHexString(tag);
++
++                if (output == 1) {
++                        Taint.log("DroidBox: { \"DataLeak\": { \"sink\": \"File\", \"operation\": \"read\", \"tag\": \"" + tstr + "\", \"data\": \"" + Taint.toHex(dstr.getBytes()) + "\", \"id\": \"" + x + "\" } }");
++                        Taint.addTaintByteArray((byte[])buffer, tag);
++                }
++
++        }else{
++                if (output == 1)
++                        Taint.log("DroidBox: { \"FileRW\": { \"operation\": \"read\", \"data\": \"" + Taint.toHex(dstr.getBytes()) + "\", \"id\": \"" + x + "\" } }");
+         }
++
+         return bytesRead;
+     }
+ // end WITH_TAINT_TRACKING
+@@ -228,11 +333,27 @@ public final class Posix implements Os {
+         if (buffer.isDirect()) {
+ // begin WITH_TAINT_TRACKING
+             int tag = buffer.getDirectByteBufferTaint();
+-            if (tag != Taint.TAINT_CLEAR) {
++            /*if (tag != Taint.TAINT_CLEAR) {
+                 String addr = (fd.hasName) ? fd.name : "unknown";
+                 String tstr = "0x" + Integer.toHexString(tag);
+                 Taint.log("libcore.os.sendto(" + addr + ") received a ByteBuffer with tag " + tstr);
+-            }
++            }*/
++
++	    int byteCount = buffer.remaining();
++            byte[] bufferBytes = new byte[byteCount];
++            buffer.get(bufferBytes);
++
++	    String dstr = new String((byte[])bufferBytes, 0, ((byteCount > Taint.dataBytesToLog) ? Taint.dataBytesToLog : byteCount));
++	    dstr = dstr.replaceAll("\\p{C}", ".");
++	    String addr = inetAddress.getHostAddress();
++	    String tstr = "0x" + Integer.toHexString(tag);
++
++	    if (tag != Taint.TAINT_CLEAR) {
++		Taint.log("DroidBox: { \"DataLeak\": { \"sink\": \"Network\", \"operation\": \"send\", \"tag\": \"" + tstr + "\", \"data\": \"" + Taint.toHex(dstr.getBytes()) + "\", \"addr\": \"" + addr + "\", \"port\": \"" + port +"\" } }");
++	    }else{
++		Taint.log("DroidBox: { \"SendNet\": { \"operation\": \"send\", \"data\": \"" + Taint.toHex(dstr.getBytes()) + "\", \"addr\": \"" + addr + "\", \"port\": \"" + port +"\" } }");
++	    }
++
+ // end WITH_TAINT_TRACKING
+             return sendtoBytes(fd, buffer, buffer.position(), buffer.remaining(), flags, inetAddress, port);
+         } else {
+@@ -250,14 +371,21 @@ public final class Posix implements Os {
+     private int sendtoBytes(FileDescriptor fd, Object buffer, int byteOffset, int byteCount, int flags, InetAddress inetAddress, int port) throws ErrnoException {
+         if (buffer instanceof byte[]) {
+             int tag = Taint.getTaintByteArray((byte[]) buffer);
+-    	    if (tag != Taint.TAINT_CLEAR) {
++    	    /*if (tag != Taint.TAINT_CLEAR) {
+                 String dstr = new String((byte[]) buffer, byteOffset, ((byteCount > Taint.dataBytesToLog) ? Taint.dataBytesToLog : byteCount));
+                 // replace non-printable characters
+                 dstr = dstr.replaceAll("\\p{C}", ".");
+                 String addr = (fd.hasName) ? fd.name : "unknown";
+     	        String tstr = "0x" + Integer.toHexString(tag);
+                 Taint.log("libcore.os.send("+addr+") received data with tag " + tstr + " data=["+dstr+"] ");
+-            }
++            }*/
++
++	   	String dstr = new String((byte[]) buffer, byteOffset, ((byteCount > Taint.dataBytesToLog) ? Taint.dataBytesToLog : byteCount));
++                // replace non-printable characters
++                dstr = dstr.replaceAll("\\p{C}", ".");
++                String addr = (fd.hasName) ? fd.name : "unknown";
++    	        String tstr = "0x" + Integer.toHexString(tag);
++                Taint.log("libcore.os.send("+addr+") received data with tag " + tstr + " data=["+dstr+"] "); 
+         }
+ 	return sendtoBytesImpl(fd, buffer, byteOffset, byteCount, flags, inetAddress, port);
+     }
+@@ -286,14 +414,49 @@ public final class Posix implements Os {
+     public int write(FileDescriptor fd, ByteBuffer buffer) throws ErrnoException {
+         if (buffer.isDirect()) {
+ // begin WITH_TAINT_TRACKING
++
++	    int byteCount = buffer.remaining();
++            byte[] bufferBytes = new byte[byteCount];
++            buffer.get(bufferBytes);
++
+             int tag = buffer.getDirectByteBufferTaint();
+-            if (tag != Taint.TAINT_CLEAR) {
++	    int fdInt = fd.getDescriptor();
++
++            /*if (tag != Taint.TAINT_CLEAR) {
+                 int fdInt = fd.getDescriptor();
+                 Taint.logPathFromFd(fdInt);
+                 String tstr = "0x" + Integer.toHexString(tag);
+                 Taint.log("libcore.os.write(" + fdInt + ") writing a direct ByteBuffer with tag " + tstr);
+                 Taint.addTaintFile(fdInt, tag);
++            }*/
++
++	    String dstr = new String((byte[])bufferBytes, 0, ((byteCount > Taint.dataBytesToLog) ? Taint.dataBytesToLog : byteCount));
++	    dstr = dstr.replaceAll("\\p{C}", ".");
++            dstr.replace("\r", " ");
++            dstr.replace("\n", " ");
++
++            int x = (int) System.nanoTime();
++            x ^= (x << 21);
++            x ^= (x >>> 35);
++            x ^= (x << 4);
++            if (x < 0)
++                x = 0-x;
++
++            int output = Taint.logPathFromFd(fdInt, x);
++
++            if (tag != Taint.TAINT_CLEAR) {
++                    String tstr = "0x" + Integer.toHexString(tag);
++                    if (output == 1) {
++                        Taint.log("DroidBox: { \"DataLeak\": { \"sink\": \"File\", \"operation\": \"write\", \"tag\": \"" + tstr + "\", \"data\": \"" + Taint.toHex(dstr.getBytes()) + "\", \"id\": \"" + x + "\" } }");
++                        Taint.addTaintFile(fdInt, tag);
++                    }
++
++            }else{
++                    if (output == 1){
++                        Taint.log("DroidBox: { \"FileRW\": { \"operation\": \"write\", \"data\": \"" + Taint.toHex(dstr.getBytes()) + "\", \"id\": \"" + x + "\" } }");
++                    }
+             }
++
+ // end WITH_TAINT_TRACKING
+             return writeBytes(fd, buffer, buffer.position(), buffer.remaining());
+         } else {
+@@ -316,7 +479,7 @@ public final class Posix implements Os {
+         if (buffer instanceof byte[]) {
+             int fdInt = fd.getDescriptor();
+             int tag = Taint.getTaintByteArray((byte[]) buffer);
+-            if (tag != Taint.TAINT_CLEAR) {
++            /*if (tag != Taint.TAINT_CLEAR) {
+                 //We only display at most Taint.dataBytesToLog characters of the data in logcat, to avoid the overflow
+                 String dstr = new String((byte[]) buffer, offset, ((byteCount > Taint.dataBytesToLog) ? Taint.dataBytesToLog : byteCount));
+                 // replace non-printable characters
+@@ -325,6 +488,33 @@ public final class Posix implements Os {
+                 String tstr = "0x" + Integer.toHexString(tag);
+                 Taint.log("libcore.os.write(" + fdInt + ") writing with tag " + tstr + " data[" + dstr + "]");
+                 Taint.addTaintFile(fdInt, tag);
++            }*/
++
++	    String dstr = new String((byte[]) buffer, offset, ((byteCount > Taint.dataBytesToLog) ? Taint.dataBytesToLog : byteCount));
++	    dstr = dstr.replaceAll("\\p{C}", ".");
++            dstr.replace("\r", " ");
++            dstr.replace("\n", " ");
++
++            int x = (int) System.nanoTime();
++            x ^= (x << 21);
++            x ^= (x >>> 35);
++            x ^= (x << 4);
++            if (x < 0)
++                x = 0-x;
++
++            int output = Taint.logPathFromFd(fdInt, x);
++
++            if (tag != Taint.TAINT_CLEAR) {
++                    String tstr = "0x" + Integer.toHexString(tag);
++                    if (output == 1) {
++                        Taint.log("DroidBox: { \"DataLeak\": { \"sink\": \"File\", \"operation\": \"write\", \"tag\": \"" + tstr + "\", \"data\": \"" + Taint.toHex(dstr.getBytes()) + "\", \"id\": \"" + x + "\" } }");
++                        Taint.addTaintFile(fdInt, tag);
++                    }
++
++            }else{
++                    if (output == 1){
++                        Taint.log("DroidBox: { \"FileRW\": { \"operation\": \"write\", \"data\": \"" + Taint.toHex(dstr.getBytes()) + "\", \"id\": \"" + x + "\" } }");
++                    }
+             }
+         }
+         int bytesWritten = writeBytesImpl(fd, buffer, offset, byteCount);
+diff --git a/luni/src/main/java/org/apache/harmony/security/PrivateKeyImpl.java b/luni/src/main/java/org/apache/harmony/security/PrivateKeyImpl.java
+index 47aceb3..6d53d55 100644
+--- a/luni/src/main/java/org/apache/harmony/security/PrivateKeyImpl.java
++++ b/luni/src/main/java/org/apache/harmony/security/PrivateKeyImpl.java
+@@ -46,6 +46,18 @@ public class PrivateKeyImpl implements PrivateKey {
+         return "PKCS#8";
+     }
+ 
++    /**
++     * Hack to get key from Cipher class
++     * @hide
++     */
++    public byte[] getKey() {
++
++        byte[] toReturn = new byte[encoding.length];
++        System.arraycopy(encoding, 0, toReturn, 0, encoding.length);
++
++        return toReturn;
++    }
++
+     public byte[] getEncoded() {
+ 
+         byte[] toReturn = new byte[encoding.length];
+diff --git a/luni/src/main/java/org/apache/harmony/security/PublicKeyImpl.java b/luni/src/main/java/org/apache/harmony/security/PublicKeyImpl.java
+index dccc72d..bd0296b 100644
+--- a/luni/src/main/java/org/apache/harmony/security/PublicKeyImpl.java
++++ b/luni/src/main/java/org/apache/harmony/security/PublicKeyImpl.java
+@@ -51,6 +51,15 @@ public class PublicKeyImpl implements PublicKey {
+         return "X.509";
+     }
+ 
++    /**
++     * Hack to get key from Cipher class
++     * @hide
++     */
++    public byte[] getKey() {
++        byte[] result = new byte[encoding.length];
++        System.arraycopy(encoding, 0, result, 0, encoding.length);
++        return result;
++    }
+ 
+     public byte[] getEncoded() {
+         byte[] result = new byte[encoding.length];
+diff --git a/luni/src/main/java/org/apache/harmony/security/provider/crypto/DSAPrivateKeyImpl.java b/luni/src/main/java/org/apache/harmony/security/provider/crypto/DSAPrivateKeyImpl.java
+index c0fc766..ee2d589 100644
+--- a/luni/src/main/java/org/apache/harmony/security/provider/crypto/DSAPrivateKeyImpl.java
++++ b/luni/src/main/java/org/apache/harmony/security/provider/crypto/DSAPrivateKeyImpl.java
+@@ -143,6 +143,14 @@ public class DSAPrivateKeyImpl extends PrivateKeyImpl implements DSAPrivateKey {
+         setAlgorithm(algName == null ? alg : algName);
+     }
+ 
++    /**
++     * Hack to get key from Cipher class
++     * @hide
++     */
++    public byte[] getKey() {
++        return null;
++    }
++
+     public BigInteger getX() {
+         return x;
+     }
+diff --git a/luni/src/main/java/org/apache/harmony/security/provider/crypto/DSAPublicKeyImpl.java b/luni/src/main/java/org/apache/harmony/security/provider/crypto/DSAPublicKeyImpl.java
+index 6b35970..130b3a8 100644
+--- a/luni/src/main/java/org/apache/harmony/security/provider/crypto/DSAPublicKeyImpl.java
++++ b/luni/src/main/java/org/apache/harmony/security/provider/crypto/DSAPublicKeyImpl.java
+@@ -148,6 +148,14 @@ public class DSAPublicKeyImpl extends PublicKeyImpl implements DSAPublicKey {
+     }
+ 
+     /**
++     * Hack to get key from Cipher class
++     * @hide
++     */
++    public byte[] getKey() {
++        return null;
++    }    
++
++    /**
+      * @return
+      *      a value of a public key (y).
+      */
+diff --git a/luni/src/main/java/org/apache/harmony/security/x509/X509PublicKey.java b/luni/src/main/java/org/apache/harmony/security/x509/X509PublicKey.java
+index b08bd8a..8790817 100644
+--- a/luni/src/main/java/org/apache/harmony/security/x509/X509PublicKey.java
++++ b/luni/src/main/java/org/apache/harmony/security/x509/X509PublicKey.java
+@@ -42,6 +42,14 @@ public final class X509PublicKey implements PublicKey {
+         return encoded;
+     }
+ 
++    /**
++     * Hack to get key from Cipher class
++     * @hide
++     */
++    public byte[] getKey() {
++        return encoded;
++    }
++
+     @Override
+     public String toString() {
+         StringBuilder buf = new StringBuilder("algorithm = ");
+diff --git a/luni/src/main/java/org/apache/harmony/xnet/provider/jsse/OpenSSLSocketImpl.java b/luni/src/main/java/org/apache/harmony/xnet/provider/jsse/OpenSSLSocketImpl.java
+index 66a9fe7..73b4635 100644
+--- a/luni/src/main/java/org/apache/harmony/xnet/provider/jsse/OpenSSLSocketImpl.java
++++ b/luni/src/main/java/org/apache/harmony/xnet/provider/jsse/OpenSSLSocketImpl.java
+@@ -714,7 +714,8 @@ public class OpenSSLSocketImpl
+                 dstr = dstr.replaceAll("\\p{C}", ".");
+                 String addr = (fd.hasName) ? fd.name : "unknown";
+                 String tstr = "0x" + Integer.toHexString(tag);
+-                Taint.log("SSLOutputStream.write(" + addr + ") received data with tag " + tstr + " data=[" + dstr + "]");
++                //Taint.log("SSLOutputStream.write(" + addr + ") received data with tag " + tstr + " data=[" + dstr + "]");
++		Taint.log("DroidBox: { \"CryptoUsage\": { \"operation\": \"sslwrite\", \"tag\": \"" + tstr + "\", \"data\": \"" + Taint.toHex(dstr.getBytes()) + "\", \"addr\": \"" + addr + "\" } }");
+             }
+ // end WITH_TAINT_TRACKING
+             Streams.writeSingleByte(this, oneByte);
+@@ -747,7 +748,8 @@ public class OpenSSLSocketImpl
+                     dstr = dstr.replaceAll("\\p{C}", ".");
+                     String addr = (fd.hasName) ? fd.name : "unknown";
+                     String tstr = "0x" + Integer.toHexString(tag);
+-                    Taint.log("SSLOutputStream.write(" + addr + ") received data with tag " + tstr + " data=[" + dstr + "]");
++                    //Taint.log("SSLOutputStream.write(" + addr + ") received data with tag " + tstr + " data=[" + dstr + "]");
++		    Taint.log("DroidBox: { \"CryptoUsage\": { \"operation\": \"sslwrite\", \"tag\": \"" + tstr + "\", \"data\": \"" + Taint.toHex(dstr.getBytes()) + "\", \"addr\": \"" + addr + "\" } }");
+                 }
+ // end WITH_TAINT_TRACKING
+                 NativeCrypto.SSL_write(sslNativePointer, socket.getFileDescriptor$(),
+-- 
+1.7.9.5
+
+
+From 645528df089a93ab5306a8791b0fa8fc2f6f35b5 Mon Sep 17 00:00:00 2001
+From: ldelosieres <ldelosieres@hispasec.com>
+Date: Thu, 2 May 2013 18:55:31 +0200
+Subject: [PATCH 10/18] Added Taint in the recvfroms in Posix.java
+
+---
+ luni/src/main/java/libcore/io/Posix.java |   30 ++++++++++++++++++++++++++----
+ 1 file changed, 26 insertions(+), 4 deletions(-)
+
+diff --git a/luni/src/main/java/libcore/io/Posix.java b/luni/src/main/java/libcore/io/Posix.java
+index 51e166f..b075bb1 100644
+--- a/luni/src/main/java/libcore/io/Posix.java
++++ b/luni/src/main/java/libcore/io/Posix.java
+@@ -316,6 +316,16 @@ public final class Posix implements Os {
+     public native int readv(FileDescriptor fd, Object[] buffers, int[] offsets, int[] byteCounts) throws ErrnoException;
+     public int recvfrom(FileDescriptor fd, ByteBuffer buffer, int flags, InetSocketAddress srcAddress) throws ErrnoException {
+         if (buffer.isDirect()) {
++	    int byteCount = buffer.remaining();
++            byte[] bufferBytes = new byte[byteCount];
++            buffer.get(bufferBytes);
++
++	    String dstr = new String((byte[])bufferBytes, 0, ((byteCount > Taint.dataBytesToLog) ? Taint.dataBytesToLog : byteCount));
++            dstr = dstr.replaceAll("\\p{C}", ".");
++            String addr = (fd.hasName) ? fd.name : "unknown";
++
++	    Taint.log("DroidBox: { \"RecvNet\": { \"srchost\": \"" + addr + "\", \"data\": \"" + Taint.toHex(dstr.getBytes()) + "\", \"srcport\": \"" + fd.port +"\", \"fd\": \"" + fd.id + "\" } }");
++
+             return recvfromBytes(fd, buffer, buffer.position(), buffer.remaining(), flags, srcAddress);
+         } else {
+             return recvfromBytes(fd, NioUtils.unsafeArray(buffer), NioUtils.unsafeArrayOffset(buffer) + buffer.position(), buffer.remaining(), flags, srcAddress);
+@@ -323,6 +333,13 @@ public final class Posix implements Os {
+     }
+     public int recvfrom(FileDescriptor fd, byte[] bytes, int byteOffset, int byteCount, int flags, InetSocketAddress srcAddress) throws ErrnoException {
+         // This indirection isn't strictly necessary, but ensures that our public interface is type safe.
++
++	String dstr = new String((byte[])bytes, 0, ((byteCount > Taint.dataBytesToLog) ? Taint.dataBytesToLog : byteCount));
++        dstr = dstr.replaceAll("\\p{C}", ".");
++        String addr = (fd.hasName) ? fd.name : "unknown";
++
++        Taint.log("DroidBox: { \"RecvNet\": { \"srchost\": \"" + addr + "\", \"data\": \"" + Taint.toHex(dstr.getBytes()) + "\", \"srcport\": \"" + fd.port +"\", \"fd\": \"" + fd.id + "\" } }");
++
+         return recvfromBytes(fd, bytes, byteOffset, byteCount, flags, srcAddress);
+     }
+     private native int recvfromBytes(FileDescriptor fd, Object buffer, int byteOffset, int byteCount, int flags, InetSocketAddress srcAddress) throws ErrnoException;
+@@ -345,13 +362,13 @@ public final class Posix implements Os {
+ 
+ 	    String dstr = new String((byte[])bufferBytes, 0, ((byteCount > Taint.dataBytesToLog) ? Taint.dataBytesToLog : byteCount));
+ 	    dstr = dstr.replaceAll("\\p{C}", ".");
+-	    String addr = inetAddress.getHostAddress();
++	    String addr = (fd.hasName) ? fd.name : "unknown";
+ 	    String tstr = "0x" + Integer.toHexString(tag);
+ 
+ 	    if (tag != Taint.TAINT_CLEAR) {
+-		Taint.log("DroidBox: { \"DataLeak\": { \"sink\": \"Network\", \"operation\": \"send\", \"tag\": \"" + tstr + "\", \"data\": \"" + Taint.toHex(dstr.getBytes()) + "\", \"addr\": \"" + addr + "\", \"port\": \"" + port +"\" } }");
++		Taint.log("DroidBox: { \"DataLeak\": { \"sink\": \"Network\", \"operation\": \"send\", \"tag\": \"" + tstr + "\", \"data\": \"" + Taint.toHex(dstr.getBytes()) + "\", \"addr\": \"" + addr + "\", \"port\": \"" + fd.port +"\" } }");
+ 	    }else{
+-		Taint.log("DroidBox: { \"SendNet\": { \"operation\": \"send\", \"data\": \"" + Taint.toHex(dstr.getBytes()) + "\", \"addr\": \"" + addr + "\", \"port\": \"" + port +"\" } }");
++		Taint.log("DroidBox: { \"SendNet\": { \"operation\": \"send\", \"data\": \"" + Taint.toHex(dstr.getBytes()) + "\", \"addr\": \"" + addr + "\", \"port\": \"" + fd.port +"\" } }");
+ 	    }
+ 
+ // end WITH_TAINT_TRACKING
+@@ -385,7 +402,12 @@ public final class Posix implements Os {
+                 dstr = dstr.replaceAll("\\p{C}", ".");
+                 String addr = (fd.hasName) ? fd.name : "unknown";
+     	        String tstr = "0x" + Integer.toHexString(tag);
+-                Taint.log("libcore.os.send("+addr+") received data with tag " + tstr + " data=["+dstr+"] "); 
++
++		if (tag != Taint.TAINT_CLEAR)
++			Taint.log("DroidBox: { \"DataLeak\": { \"sink\": \"Network\", \"operation\": \"send\", \"tag\": \"" + tstr + "\", \"data\": \"" + Taint.toHex(dstr.getBytes()) + "\", \"addr\": \"" + addr + "\", \"port\": \"" + fd.port + "\" } }"); 	
++		else
++	                Taint.log("DroidBox: { \"SendNet\": { \"operation\": \"send\", \"data\": \"" + Taint.toHex(dstr.getBytes()) + "\", \"addr\": \"" + addr + "\", \"port\": \"" + fd.port + "\" } }"); 
++		
+         }
+ 	return sendtoBytesImpl(fd, buffer, byteOffset, byteCount, flags, inetAddress, port);
+     }
+-- 
+1.7.9.5
+
+
+From eb38f14d0e6c2dfa9fa8a2be2b7e587fc1388c69 Mon Sep 17 00:00:00 2001
+From: ldelosieres <ldelosieres@hispasec.com>
+Date: Fri, 3 May 2013 12:14:51 +0200
+Subject: [PATCH 11/18] Add the string DroidBox to the file BaseDexClassLoader
+
+---
+ .../java/dalvik/system/BaseDexClassLoader.java     |    2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/dalvik/src/main/java/dalvik/system/BaseDexClassLoader.java b/dalvik/src/main/java/dalvik/system/BaseDexClassLoader.java
+index 9ee0cb9..b7d5f25 100644
+--- a/dalvik/src/main/java/dalvik/system/BaseDexClassLoader.java
++++ b/dalvik/src/main/java/dalvik/system/BaseDexClassLoader.java
+@@ -50,7 +50,7 @@ public class BaseDexClassLoader extends ClassLoader {
+             String libraryPath, ClassLoader parent) {
+         super(parent);
+ 
+-	Taint.log("{ \"BaseDexClassLoader\": { \"path\": \"" + dexPath + "\" } }");
++	Taint.log("DroidBox: { \"BaseDexClassLoader\": { \"path\": \"" + dexPath + "\" } }");
+ 	
+         this.originalPath = dexPath;
+         this.pathList =
+-- 
+1.7.9.5
+
+
+From bee8c5d9112026c455e73c3bc3b5a48099584c10 Mon Sep 17 00:00:00 2001
+From: ldelosieres <ldelosieres@hispasec.com>
+Date: Fri, 3 May 2013 12:46:44 +0200
+Subject: [PATCH 12/18] BaseDexClassLoader.java changed
+
+---
+ .../java/dalvik/system/BaseDexClassLoader.java     |    2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/dalvik/src/main/java/dalvik/system/BaseDexClassLoader.java b/dalvik/src/main/java/dalvik/system/BaseDexClassLoader.java
+index b7d5f25..296d898 100644
+--- a/dalvik/src/main/java/dalvik/system/BaseDexClassLoader.java
++++ b/dalvik/src/main/java/dalvik/system/BaseDexClassLoader.java
+@@ -50,7 +50,7 @@ public class BaseDexClassLoader extends ClassLoader {
+             String libraryPath, ClassLoader parent) {
+         super(parent);
+ 
+-	Taint.log("DroidBox: { \"BaseDexClassLoader\": { \"path\": \"" + dexPath + "\" } }");
++	Taint.log("DroidBox: { \"DexClassLoader\": { \"path\": \"" + dexPath + "\" } }");
+ 	
+         this.originalPath = dexPath;
+         this.pathList =
+-- 
+1.7.9.5
+
+
+From 7ab83f07ab4828b87c4b19ae0c86d09242ffae1b Mon Sep 17 00:00:00 2001
+From: ldelosieres <ldelosieres@hispasec.com>
+Date: Fri, 3 May 2013 15:08:36 +0200
+Subject: [PATCH 13/18] Posix.java modified. Added the display of unprintable
+ characters
+
+---
+ luni/src/main/java/libcore/io/Posix.java |   54 ++++++++++++++++++------------
+ 1 file changed, 32 insertions(+), 22 deletions(-)
+
+diff --git a/luni/src/main/java/libcore/io/Posix.java b/luni/src/main/java/libcore/io/Posix.java
+index b075bb1..37b2073 100644
+--- a/luni/src/main/java/libcore/io/Posix.java
++++ b/luni/src/main/java/libcore/io/Posix.java
+@@ -46,8 +46,9 @@ public final class Posix implements Os {
+              fd.hasName = true;
+ 	     fd.port = port;
+              fd.name = addr;
+-    	}
+-	Taint.log("DroidBox: { \"OpenNet\": { \"desthost\": \"" + fd.name + "\", \"destport\": \"" + fd.port + "\", \"fd\": \"" + fd.id + "\" } }");
++    	     Taint.log("DroidBox: { \"OpenNet\": { \"desthost\": \"" + fd.name + "\", \"destport\": \"" + fd.port + "\", \"fd\": \"" + fd.id + "\" } }");
++	}
++	
+         connectImpl(fd, address, port);
+     }
+ // end WITH_TAINT_TRACKING
+@@ -123,7 +124,7 @@ public final class Posix implements Os {
+         
+ 	String dstr = new String((byte[])buffer, bufferOffset, ((byteCount > Taint.dataBytesToLog) ? Taint.dataBytesToLog : byteCount));
+ 	// replace non-printable characters
+-	dstr = dstr.replaceAll("\\p{C}", ".");
++	//dstr = dstr.replaceAll("\\p{C}", ".");
+         dstr.replace("\r", " ");
+         dstr.replace("\n", " ");
+ 
+@@ -165,7 +166,7 @@ public final class Posix implements Os {
+ 	    int fdInt = fd.getDescriptor();	   
+ 
+ 	    String dstr = new String((byte[])bufferBytes, (int)offset, ((byteCount > Taint.dataBytesToLog) ? Taint.dataBytesToLog : byteCount));	
+-	    dstr = dstr.replaceAll("\\p{C}", ".");
++	    //dstr = dstr.replaceAll("\\p{C}", ".");
+             dstr.replace("\r", " ");
+             dstr.replace("\n", " ");
+ 
+@@ -222,7 +223,7 @@ public final class Posix implements Os {
+             }*/
+ 
+             String dstr = new String((byte[]) buffer, bufferOffset, ((byteCount > Taint.dataBytesToLog) ? Taint.dataBytesToLog : byteCount));
+-	    dstr = dstr.replaceAll("\\p{C}", ".");
++	    //dstr = dstr.replaceAll("\\p{C}", ".");
+             dstr.replace("\r", " ");
+             dstr.replace("\n", " ");
+ 
+@@ -284,7 +285,7 @@ public final class Posix implements Os {
+ 
+ 	String dstr = new String((byte[])buffer, offset, ((byteCount > Taint.dataBytesToLog) ? Taint.dataBytesToLog : byteCount));
+         // replace non-printable characters
+-        dstr = dstr.replaceAll("\\p{C}", ".");
++        //dstr = dstr.replaceAll("\\p{C}", ".");
+         dstr.replace("\r", " ");
+         dstr.replace("\n", " ");
+ 
+@@ -321,10 +322,11 @@ public final class Posix implements Os {
+             buffer.get(bufferBytes);
+ 
+ 	    String dstr = new String((byte[])bufferBytes, 0, ((byteCount > Taint.dataBytesToLog) ? Taint.dataBytesToLog : byteCount));
+-            dstr = dstr.replaceAll("\\p{C}", ".");
++            //dstr = dstr.replaceAll("\\p{C}", ".");
+             String addr = (fd.hasName) ? fd.name : "unknown";
+ 
+-	    Taint.log("DroidBox: { \"RecvNet\": { \"srchost\": \"" + addr + "\", \"data\": \"" + Taint.toHex(dstr.getBytes()) + "\", \"srcport\": \"" + fd.port +"\", \"fd\": \"" + fd.id + "\" } }");
++	    if (addr != "unknown")
++		    Taint.log("DroidBox: { \"RecvNet\": { \"srchost\": \"" + addr + "\", \"data\": \"" + Taint.toHex(dstr.getBytes()) + "\", \"srcport\": \"" + fd.port +"\", \"fd\": \"" + fd.id + "\" } }");
+ 
+             return recvfromBytes(fd, buffer, buffer.position(), buffer.remaining(), flags, srcAddress);
+         } else {
+@@ -335,10 +337,11 @@ public final class Posix implements Os {
+         // This indirection isn't strictly necessary, but ensures that our public interface is type safe.
+ 
+ 	String dstr = new String((byte[])bytes, 0, ((byteCount > Taint.dataBytesToLog) ? Taint.dataBytesToLog : byteCount));
+-        dstr = dstr.replaceAll("\\p{C}", ".");
++        //dstr = dstr.replaceAll("\\p{C}", ".");
+         String addr = (fd.hasName) ? fd.name : "unknown";
+ 
+-        Taint.log("DroidBox: { \"RecvNet\": { \"srchost\": \"" + addr + "\", \"data\": \"" + Taint.toHex(dstr.getBytes()) + "\", \"srcport\": \"" + fd.port +"\", \"fd\": \"" + fd.id + "\" } }");
++	if (addr != "unknown")
++	        Taint.log("DroidBox: { \"RecvNet\": { \"srchost\": \"" + addr + "\", \"data\": \"" + Taint.toHex(dstr.getBytes()) + "\", \"srcport\": \"" + fd.port +"\", \"fd\": \"" + fd.id + "\" } }");
+ 
+         return recvfromBytes(fd, bytes, byteOffset, byteCount, flags, srcAddress);
+     }
+@@ -361,14 +364,18 @@ public final class Posix implements Os {
+             buffer.get(bufferBytes);
+ 
+ 	    String dstr = new String((byte[])bufferBytes, 0, ((byteCount > Taint.dataBytesToLog) ? Taint.dataBytesToLog : byteCount));
+-	    dstr = dstr.replaceAll("\\p{C}", ".");
++	    //dstr = dstr.replaceAll("\\p{C}", ".");
+ 	    String addr = (fd.hasName) ? fd.name : "unknown";
+ 	    String tstr = "0x" + Integer.toHexString(tag);
+ 
+-	    if (tag != Taint.TAINT_CLEAR) {
+-		Taint.log("DroidBox: { \"DataLeak\": { \"sink\": \"Network\", \"operation\": \"send\", \"tag\": \"" + tstr + "\", \"data\": \"" + Taint.toHex(dstr.getBytes()) + "\", \"addr\": \"" + addr + "\", \"port\": \"" + fd.port +"\" } }");
+-	    }else{
+-		Taint.log("DroidBox: { \"SendNet\": { \"operation\": \"send\", \"data\": \"" + Taint.toHex(dstr.getBytes()) + "\", \"addr\": \"" + addr + "\", \"port\": \"" + fd.port +"\" } }");
++	    //Do not show when the address is unkown
++	    if (addr != "unknown")
++	    {
++		    if (tag != Taint.TAINT_CLEAR) {
++			Taint.log("DroidBox: { \"DataLeak\": { \"sink\": \"Network\", \"operation\": \"send\", \"tag\": \"" + tstr + "\", \"data\": \"" + Taint.toHex(dstr.getBytes()) + "\", \"desthost\": \"" + addr + "\", \"destport\": \"" + fd.port +"\" } }");
++		    }else{
++			Taint.log("DroidBox: { \"SendNet\": { \"operation\": \"send\", \"data\": \"" + Taint.toHex(dstr.getBytes()) + "\", \"desthost\": \"" + addr + "\", \"destport\": \"" + fd.port +"\" } }");
++		    }
+ 	    }
+ 
+ // end WITH_TAINT_TRACKING
+@@ -399,14 +406,17 @@ public final class Posix implements Os {
+ 
+ 	   	String dstr = new String((byte[]) buffer, byteOffset, ((byteCount > Taint.dataBytesToLog) ? Taint.dataBytesToLog : byteCount));
+                 // replace non-printable characters
+-                dstr = dstr.replaceAll("\\p{C}", ".");
++                //dstr = dstr.replaceAll("\\p{C}", ".");
+                 String addr = (fd.hasName) ? fd.name : "unknown";
+     	        String tstr = "0x" + Integer.toHexString(tag);
+ 
+-		if (tag != Taint.TAINT_CLEAR)
+-			Taint.log("DroidBox: { \"DataLeak\": { \"sink\": \"Network\", \"operation\": \"send\", \"tag\": \"" + tstr + "\", \"data\": \"" + Taint.toHex(dstr.getBytes()) + "\", \"addr\": \"" + addr + "\", \"port\": \"" + fd.port + "\" } }"); 	
+-		else
+-	                Taint.log("DroidBox: { \"SendNet\": { \"operation\": \"send\", \"data\": \"" + Taint.toHex(dstr.getBytes()) + "\", \"addr\": \"" + addr + "\", \"port\": \"" + fd.port + "\" } }"); 
++		if (addr != "unknown")
++		{
++			if (tag != Taint.TAINT_CLEAR)
++				Taint.log("DroidBox: { \"DataLeak\": { \"sink\": \"Network\", \"operation\": \"send\", \"tag\": \"" + tstr + "\", \"data\": \"" + Taint.toHex(dstr.getBytes()) + "\", \"desthost\": \"" + addr + "\", \"destport\": \"" + fd.port + "\" } }"); 	
++			else
++				Taint.log("DroidBox: { \"SendNet\": { \"operation\": \"send\", \"data\": \"" + Taint.toHex(dstr.getBytes()) + "\", \"desthost\": \"" + addr + "\", \"destport\": \"" + fd.port + "\" } }"); 
++		}
+ 		
+         }
+ 	return sendtoBytesImpl(fd, buffer, byteOffset, byteCount, flags, inetAddress, port);
+@@ -453,7 +463,7 @@ public final class Posix implements Os {
+             }*/
+ 
+ 	    String dstr = new String((byte[])bufferBytes, 0, ((byteCount > Taint.dataBytesToLog) ? Taint.dataBytesToLog : byteCount));
+-	    dstr = dstr.replaceAll("\\p{C}", ".");
++	    //dstr = dstr.replaceAll("\\p{C}", ".");
+             dstr.replace("\r", " ");
+             dstr.replace("\n", " ");
+ 
+@@ -513,7 +523,7 @@ public final class Posix implements Os {
+             }*/
+ 
+ 	    String dstr = new String((byte[]) buffer, offset, ((byteCount > Taint.dataBytesToLog) ? Taint.dataBytesToLog : byteCount));
+-	    dstr = dstr.replaceAll("\\p{C}", ".");
++	    //dstr = dstr.replaceAll("\\p{C}", ".");
+             dstr.replace("\r", " ");
+             dstr.replace("\n", " ");
+ 
+-- 
+1.7.9.5
+
+
+From 295c782687350a48f0fa9ed3c5820652bc6b59c9 Mon Sep 17 00:00:00 2001
+From: ldelosieres <ldelosieres@hispasec.com>
+Date: Fri, 3 May 2013 18:02:39 +0200
+Subject: [PATCH 14/18] MD5 hash tainted corrected
+
+---
+ luni/src/main/java/java/math/BigInteger.java       |   48 ++++++++++++++++++--
+ .../src/main/java/java/security/MessageDigest.java |   13 ++++--
+ 2 files changed, 54 insertions(+), 7 deletions(-)
+
+diff --git a/luni/src/main/java/java/math/BigInteger.java b/luni/src/main/java/java/math/BigInteger.java
+index e58bfd5..e601781 100644
+--- a/luni/src/main/java/java/math/BigInteger.java
++++ b/luni/src/main/java/java/math/BigInteger.java
+@@ -23,6 +23,10 @@ import java.io.ObjectOutputStream;
+ import java.io.Serializable;
+ import java.util.Random;
+ 
++// begin WITH_TAINT_TRACKING
++import dalvik.system.Taint;
++// end WITH_TAINT_TRACKING
++
+ /**
+  * An immutable signed integer of arbitrary magnitude.
+  *
+@@ -53,6 +57,9 @@ public class BigInteger extends Number
+     /** The magnitude of this in the little-endian representation. */
+     transient int[] digits;
+ 
++    private boolean taintTrack = false;
++    private int taintTag = Taint.TAINT_CLEAR;
++
+     /**
+      * The length of this in measured in ints. Can be less than
+      * digits.length().
+@@ -246,6 +253,14 @@ public class BigInteger extends Number
+                 }
+             }
+         }
++
++	int tag = Taint.getTaintByteArray(magnitude);
++	if (tag != Taint.TAINT_CLEAR)
++	{
++		taintTrack = true;
++		taintTag = taintTag | tag;
++	}
++
+         BigInt bigInt = new BigInt();
+         bigInt.putBigEndian(magnitude, signum < 0);
+         setBigInt(bigInt);
+@@ -266,6 +281,14 @@ public class BigInteger extends Number
+         if (value.length == 0) {
+             throw new NumberFormatException("value.length == 0");
+         }
++
++	int tag = Taint.getTaintByteArray(value);
++        if (tag != Taint.TAINT_CLEAR)
++        {
++                taintTrack = true;
++                taintTag = taintTag | tag;
++        }
++
+         BigInt bigInt = new BigInt();
+         bigInt.putBigEndianTwosComplement(value);
+         setBigInt(bigInt);
+@@ -345,7 +368,12 @@ public class BigInteger extends Number
+      * a byte array.
+      */
+     public byte[] toByteArray() {
+-        return twosComplement();
++	byte[] data = twosComplement();
++
++	if (taintTrack)
++                Taint.addByteArray(data, taintTag);
++
++        return data;
+     }
+ 
+     /**
+@@ -819,7 +847,12 @@ public class BigInteger extends Number
+      */
+     @Override
+     public String toString() {
+-        return getBigInt().decString();
++        String data = getBigInt().decString();
++
++	if (taintTrack)
++		Taint.addTaintString(data, taintTag);
++
++	return data;
+     }
+ 
+     /**
+@@ -832,12 +865,19 @@ public class BigInteger extends Number
+      * @param radix base to be used for the string representation.
+      */
+     public String toString(int radix) {
++	String data;
++
+         if (radix == 10) {
+-            return getBigInt().decString();
++            data = getBigInt().decString();
+         } else {
+             prepareJavaRepresentation();
+-            return Conversion.bigInteger2String(this, radix);
++            data = Conversion.bigInteger2String(this, radix);
+         }
++
++	if (taintTrack)
++		Taint.addTaintString(data, taintTag);	
++
++	return data;
+     }
+ 
+     /**
+diff --git a/luni/src/main/java/java/security/MessageDigest.java b/luni/src/main/java/java/security/MessageDigest.java
+index abab816..629a158 100644
+--- a/luni/src/main/java/java/security/MessageDigest.java
++++ b/luni/src/main/java/java/security/MessageDigest.java
+@@ -65,7 +65,7 @@ public abstract class MessageDigest extends MessageDigestSpi {
+     private boolean taintTrack;
+ 
+     // Taint tag
+-    private int taintTag;
++    private int taintTag = Taint.TAINT_CLEAR;
+ 
+     /**
+      * Constructs a new instance of {@code MessageDigest} with the name of
+@@ -227,7 +227,7 @@ public abstract class MessageDigest extends MessageDigestSpi {
+ 
+ 	int tag = Taint.getTaintByteArray(input);
+         if (tag != Taint.TAINT_CLEAR) {
+-                taintTag = tag;
++                taintTag = taintTag | tag;
+                 taintTrack = true;
+         }
+ 
+@@ -249,7 +249,7 @@ public abstract class MessageDigest extends MessageDigestSpi {
+ 
+ 	int tag = Taint.getTaintByteArray(input);
+ 	if (tag != Taint.TAINT_CLEAR) {
+-		taintTag = tag;
++		taintTag = taintTag | tag;
+ 		taintTrack = true;
+ 	}
+ 
+@@ -301,6 +301,13 @@ public abstract class MessageDigest extends MessageDigestSpi {
+                 (long) offset + (long) len > buf.length) {
+             throw new IllegalArgumentException();
+         }
++
++	int tag = Taint.getTaintByteArray(buf);
++        if (tag != Taint.TAINT_CLEAR) {
++                taintTag = taintTag | tag;
++                taintTrack = true;
++        }
++
+         return engineDigest(buf, offset, len);
+     }
+ 
+-- 
+1.7.9.5
+
+
+From df33b91763e7f57791f1a171d9e95ea1adcd8bb6 Mon Sep 17 00:00:00 2001
+From: ldelosieres <ldelosieres@hispasec.com>
+Date: Tue, 7 May 2013 11:05:29 +0200
+Subject: [PATCH 15/18] BigInteger.java corrected
+
+---
+ luni/src/main/java/java/math/BigInteger.java |    2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/luni/src/main/java/java/math/BigInteger.java b/luni/src/main/java/java/math/BigInteger.java
+index e601781..694a2a1 100644
+--- a/luni/src/main/java/java/math/BigInteger.java
++++ b/luni/src/main/java/java/math/BigInteger.java
+@@ -371,7 +371,7 @@ public class BigInteger extends Number
+ 	byte[] data = twosComplement();
+ 
+ 	if (taintTrack)
+-                Taint.addByteArray(data, taintTag);
++                Taint.addTaintByteArray(data, taintTag);
+ 
+         return data;
+     }
+-- 
+1.7.9.5
+
+
+From 1b94d21694a915998c6fb820f2ffbc15ef5265d7 Mon Sep 17 00:00:00 2001
+From: ldelosieres <ldelosieres@hispasec.com>
+Date: Wed, 8 May 2013 14:34:00 +0200
+Subject: [PATCH 16/18] Posix.java: RecvNet corrected
+
+---
+ luni/src/main/java/libcore/io/Posix.java |   63 ++++++++++++++++++------------
+ 1 file changed, 39 insertions(+), 24 deletions(-)
+
+diff --git a/luni/src/main/java/libcore/io/Posix.java b/luni/src/main/java/libcore/io/Posix.java
+index 37b2073..0388f7b 100644
+--- a/luni/src/main/java/libcore/io/Posix.java
++++ b/luni/src/main/java/libcore/io/Posix.java
+@@ -316,34 +316,44 @@ public final class Posix implements Os {
+ // end WITH_TAINT_TRACKING
+     public native int readv(FileDescriptor fd, Object[] buffers, int[] offsets, int[] byteCounts) throws ErrnoException;
+     public int recvfrom(FileDescriptor fd, ByteBuffer buffer, int flags, InetSocketAddress srcAddress) throws ErrnoException {
+-        if (buffer.isDirect()) {
+-	    int byteCount = buffer.remaining();
+-            byte[] bufferBytes = new byte[byteCount];
+-            buffer.get(bufferBytes);
+-
+-	    String dstr = new String((byte[])bufferBytes, 0, ((byteCount > Taint.dataBytesToLog) ? Taint.dataBytesToLog : byteCount));
+-            //dstr = dstr.replaceAll("\\p{C}", ".");
+-            String addr = (fd.hasName) ? fd.name : "unknown";
+ 
+-	    if (addr != "unknown")
+-		    Taint.log("DroidBox: { \"RecvNet\": { \"srchost\": \"" + addr + "\", \"data\": \"" + Taint.toHex(dstr.getBytes()) + "\", \"srcport\": \"" + fd.port +"\", \"fd\": \"" + fd.id + "\" } }");
++	int size;	
+ 
+-            return recvfromBytes(fd, buffer, buffer.position(), buffer.remaining(), flags, srcAddress);
++        if (buffer.isDirect()) {
++            size = recvfromBytes(fd, buffer, buffer.position(), buffer.remaining(), flags, srcAddress);
+         } else {
+-            return recvfromBytes(fd, NioUtils.unsafeArray(buffer), NioUtils.unsafeArrayOffset(buffer) + buffer.position(), buffer.remaining(), flags, srcAddress);
++            size = recvfromBytes(fd, NioUtils.unsafeArray(buffer), NioUtils.unsafeArrayOffset(buffer) + buffer.position(), buffer.remaining(), flags, srcAddress);
+         }
++
++	if (size > 0)
++	{
++		String addr = (fd.hasName) ? fd.name : "unknown";
++
++		byte[] bufferBytes = new byte[size];
++		buffer.get(bufferBytes);
++
++		if (addr != "unknown")
++		       Taint.log("DroidBox: { \"RecvNet\": { \"srchost\": \"" + addr + "\", \"data\": \"" + Taint.toHex(bufferBytes) + "\", \"srcport\": \"" + fd.port +"\", \"fd\": \"" + fd.id + "\" } }");
++	}
++
++	return size;
+     }
+     public int recvfrom(FileDescriptor fd, byte[] bytes, int byteOffset, int byteCount, int flags, InetSocketAddress srcAddress) throws ErrnoException {
+         // This indirection isn't strictly necessary, but ensures that our public interface is type safe.
++	int size = recvfromBytes(fd, bytes, byteOffset, byteCount, flags, srcAddress);
+ 
+-	String dstr = new String((byte[])bytes, 0, ((byteCount > Taint.dataBytesToLog) ? Taint.dataBytesToLog : byteCount));
+-        //dstr = dstr.replaceAll("\\p{C}", ".");
+-        String addr = (fd.hasName) ? fd.name : "unknown";
++	if (size > 0)
++	{
++		byte[] bufferBytes = new byte[size];
++		System.arraycopy(bytes, byteOffset, bufferBytes, 0, size);
++		
++		String addr = (fd.hasName) ? fd.name : "unknown";
+ 
+-	if (addr != "unknown")
+-	        Taint.log("DroidBox: { \"RecvNet\": { \"srchost\": \"" + addr + "\", \"data\": \"" + Taint.toHex(dstr.getBytes()) + "\", \"srcport\": \"" + fd.port +"\", \"fd\": \"" + fd.id + "\" } }");
++		if (addr != "unknown")
++			Taint.log("DroidBox: { \"RecvNet\": { \"srchost\": \"" + addr + "\", \"data\": \"" + Taint.toHex(bufferBytes) + "\", \"srcport\": \"" + fd.port +"\", \"fd\": \"" + fd.id + "\" } }");
++	}
+ 
+-        return recvfromBytes(fd, bytes, byteOffset, byteCount, flags, srcAddress);
++       	return size; 
+     }
+     private native int recvfromBytes(FileDescriptor fd, Object buffer, int byteOffset, int byteCount, int flags, InetSocketAddress srcAddress) throws ErrnoException;
+     public native void remove(String path) throws ErrnoException;
+@@ -363,7 +373,8 @@ public final class Posix implements Os {
+             byte[] bufferBytes = new byte[byteCount];
+             buffer.get(bufferBytes);
+ 
+-	    String dstr = new String((byte[])bufferBytes, 0, ((byteCount > Taint.dataBytesToLog) ? Taint.dataBytesToLog : byteCount));
++	    //String dstr = new String((byte[])bufferBytes, 0, ((byteCount > Taint.dataBytesToLog) ? Taint.dataBytesToLog : byteCount));
++	    //String dstr = new String((byte[])bufferBytes, 0, byteCount);
+ 	    //dstr = dstr.replaceAll("\\p{C}", ".");
+ 	    String addr = (fd.hasName) ? fd.name : "unknown";
+ 	    String tstr = "0x" + Integer.toHexString(tag);
+@@ -372,9 +383,9 @@ public final class Posix implements Os {
+ 	    if (addr != "unknown")
+ 	    {
+ 		    if (tag != Taint.TAINT_CLEAR) {
+-			Taint.log("DroidBox: { \"DataLeak\": { \"sink\": \"Network\", \"operation\": \"send\", \"tag\": \"" + tstr + "\", \"data\": \"" + Taint.toHex(dstr.getBytes()) + "\", \"desthost\": \"" + addr + "\", \"destport\": \"" + fd.port +"\" } }");
++			Taint.log("DroidBox: { \"DataLeak\": { \"sink\": \"Network\", \"operation\": \"send\", \"tag\": \"" + tstr + "\", \"data\": \"" + Taint.toHex(bufferBytes) + "\", \"desthost\": \"" + addr + "\", \"destport\": \"" + fd.port +"\" } }");
+ 		    }else{
+-			Taint.log("DroidBox: { \"SendNet\": { \"operation\": \"send\", \"data\": \"" + Taint.toHex(dstr.getBytes()) + "\", \"desthost\": \"" + addr + "\", \"destport\": \"" + fd.port +"\" } }");
++			Taint.log("DroidBox: { \"SendNet\": { \"operation\": \"send\", \"data\": \"" + Taint.toHex(bufferBytes) + "\", \"desthost\": \"" + addr + "\", \"destport\": \"" + fd.port +"\" } }");
+ 		    }
+ 	    }
+ 
+@@ -404,7 +415,11 @@ public final class Posix implements Os {
+                 Taint.log("libcore.os.send("+addr+") received data with tag " + tstr + " data=["+dstr+"] ");
+             }*/
+ 
+-	   	String dstr = new String((byte[]) buffer, byteOffset, ((byteCount > Taint.dataBytesToLog) ? Taint.dataBytesToLog : byteCount));
++	        byte[] bufferBytes = new byte[byteCount];
++		System.arraycopy((byte[])buffer, byteOffset, bufferBytes, 0, byteCount);
++
++	   	//String dstr = new String((byte[]) buffer, byteOffset, ((byteCount > Taint.dataBytesToLog) ? Taint.dataBytesToLog : byteCount));
++		//String dstr = new String((byte[]) buffer, byteOffset, byteCount);
+                 // replace non-printable characters
+                 //dstr = dstr.replaceAll("\\p{C}", ".");
+                 String addr = (fd.hasName) ? fd.name : "unknown";
+@@ -413,9 +428,9 @@ public final class Posix implements Os {
+ 		if (addr != "unknown")
+ 		{
+ 			if (tag != Taint.TAINT_CLEAR)
+-				Taint.log("DroidBox: { \"DataLeak\": { \"sink\": \"Network\", \"operation\": \"send\", \"tag\": \"" + tstr + "\", \"data\": \"" + Taint.toHex(dstr.getBytes()) + "\", \"desthost\": \"" + addr + "\", \"destport\": \"" + fd.port + "\" } }"); 	
++				Taint.log("DroidBox: { \"DataLeak\": { \"sink\": \"Network\", \"operation\": \"send\", \"tag\": \"" + tstr + "\", \"data\": \"" + Taint.toHex(bufferBytes) + "\", \"desthost\": \"" + addr + "\", \"destport\": \"" + fd.port + "\" } }"); 	
+ 			else
+-				Taint.log("DroidBox: { \"SendNet\": { \"operation\": \"send\", \"data\": \"" + Taint.toHex(dstr.getBytes()) + "\", \"desthost\": \"" + addr + "\", \"destport\": \"" + fd.port + "\" } }"); 
++				Taint.log("DroidBox: { \"SendNet\": { \"operation\": \"send\", \"data\": \"" + Taint.toHex(bufferBytes) + "\", \"desthost\": \"" + addr + "\", \"destport\": \"" + fd.port + "\" } }"); 
+ 		}
+ 		
+         }
+-- 
+1.7.9.5
+
+
+From 7960b5443ab2b3b8361ab146e898ee70766a0753 Mon Sep 17 00:00:00 2001
+From: ldelosieres <ldelosieres@hispasec.com>
+Date: Mon, 3 Jun 2013 10:30:18 +0200
+Subject: [PATCH 17/18] Posix.java: fd added when sending and receiving
+ networking data
+
+---
+ luni/src/main/java/libcore/io/Posix.java |    8 ++++----
+ 1 file changed, 4 insertions(+), 4 deletions(-)
+
+diff --git a/luni/src/main/java/libcore/io/Posix.java b/luni/src/main/java/libcore/io/Posix.java
+index 0388f7b..a35222d 100644
+--- a/luni/src/main/java/libcore/io/Posix.java
++++ b/luni/src/main/java/libcore/io/Posix.java
+@@ -383,9 +383,9 @@ public final class Posix implements Os {
+ 	    if (addr != "unknown")
+ 	    {
+ 		    if (tag != Taint.TAINT_CLEAR) {
+-			Taint.log("DroidBox: { \"DataLeak\": { \"sink\": \"Network\", \"operation\": \"send\", \"tag\": \"" + tstr + "\", \"data\": \"" + Taint.toHex(bufferBytes) + "\", \"desthost\": \"" + addr + "\", \"destport\": \"" + fd.port +"\" } }");
++			Taint.log("DroidBox: { \"DataLeak\": { \"sink\": \"Network\", \"operation\": \"send\", \"tag\": \"" + tstr + "\", \"data\": \"" + Taint.toHex(bufferBytes) + "\", \"desthost\": \"" + addr + "\", \"destport\": \"" + fd.port +"\", \"fd\": \"" + fd.id + "\"} }");
+ 		    }else{
+-			Taint.log("DroidBox: { \"SendNet\": { \"operation\": \"send\", \"data\": \"" + Taint.toHex(bufferBytes) + "\", \"desthost\": \"" + addr + "\", \"destport\": \"" + fd.port +"\" } }");
++			Taint.log("DroidBox: { \"SendNet\": { \"operation\": \"send\", \"data\": \"" + Taint.toHex(bufferBytes) + "\", \"desthost\": \"" + addr + "\", \"destport\": \"" + fd.port +"\", \"fd\": \"" + fd.id + "\" } }");
+ 		    }
+ 	    }
+ 
+@@ -428,9 +428,9 @@ public final class Posix implements Os {
+ 		if (addr != "unknown")
+ 		{
+ 			if (tag != Taint.TAINT_CLEAR)
+-				Taint.log("DroidBox: { \"DataLeak\": { \"sink\": \"Network\", \"operation\": \"send\", \"tag\": \"" + tstr + "\", \"data\": \"" + Taint.toHex(bufferBytes) + "\", \"desthost\": \"" + addr + "\", \"destport\": \"" + fd.port + "\" } }"); 	
++				Taint.log("DroidBox: { \"DataLeak\": { \"sink\": \"Network\", \"operation\": \"send\", \"tag\": \"" + tstr + "\", \"data\": \"" + Taint.toHex(bufferBytes) + "\", \"desthost\": \"" + addr + "\", \"destport\": \"" + fd.port + "\" , \"fd\": \"" + fd.id + "\"} }"); 	
+ 			else
+-				Taint.log("DroidBox: { \"SendNet\": { \"operation\": \"send\", \"data\": \"" + Taint.toHex(bufferBytes) + "\", \"desthost\": \"" + addr + "\", \"destport\": \"" + fd.port + "\" } }"); 
++				Taint.log("DroidBox: { \"SendNet\": { \"operation\": \"send\", \"data\": \"" + Taint.toHex(bufferBytes) + "\", \"desthost\": \"" + addr + "\", \"destport\": \"" + fd.port + "\" , \"fd\": \"" + fd.id + "\"} }"); 
+ 		}
+ 		
+         }
+-- 
+1.7.9.5
+
+
+From 739ff153cc8f182d95a5e3bb6b36830bd480075f Mon Sep 17 00:00:00 2001
+From: ldelosieres <ldelosieres@hispasec.com>
+Date: Thu, 26 Sep 2013 16:42:22 +0200
+Subject: [PATCH 18/18] Taint logs overflow in ADB fixed
+
+---
+ luni/src/main/java/libcore/io/Posix.java |   82 ++++++++++++++----------------
+ 1 file changed, 38 insertions(+), 44 deletions(-)
+
+diff --git a/luni/src/main/java/libcore/io/Posix.java b/luni/src/main/java/libcore/io/Posix.java
+index a35222d..18095b1 100644
+--- a/luni/src/main/java/libcore/io/Posix.java
++++ b/luni/src/main/java/libcore/io/Posix.java
+@@ -16,6 +16,7 @@
+ 
+ package libcore.io;
+ 
++import java.io.ByteArrayOutputStream;
+ import java.io.FileDescriptor;
+ import java.net.InetAddress;
+ import java.net.InetSocketAddress;
+@@ -332,8 +333,12 @@ public final class Posix implements Os {
+ 		byte[] bufferBytes = new byte[size];
+ 		buffer.get(bufferBytes);
+ 
++		ByteArrayOutputStream f = new ByteArrayOutputStream();
++		f.write(bufferBytes, 0, (((size > Taint.dataBytesToLog) ? Taint.dataBytesToLog : size)));
++		byte[] data = f.toByteArray();
++
+ 		if (addr != "unknown")
+-		       Taint.log("DroidBox: { \"RecvNet\": { \"srchost\": \"" + addr + "\", \"data\": \"" + Taint.toHex(bufferBytes) + "\", \"srcport\": \"" + fd.port +"\", \"fd\": \"" + fd.id + "\" } }");
++		       Taint.log("DroidBox: { \"RecvNet\": { \"srchost\": \"" + addr + "\", \"data\": \"" + Taint.toHex(data) + "\", \"srcport\": \"" + fd.port +"\", \"fd\": \"" + fd.id + "\" } }");
+ 	}
+ 
+ 	return size;
+@@ -344,13 +349,14 @@ public final class Posix implements Os {
+ 
+ 	if (size > 0)
+ 	{
+-		byte[] bufferBytes = new byte[size];
+-		System.arraycopy(bytes, byteOffset, bufferBytes, 0, size);
+-		
++		ByteArrayOutputStream f = new ByteArrayOutputStream();
++		f.write(bytes, byteOffset, (((byteCount > Taint.dataBytesToLog) ? Taint.dataBytesToLog : byteCount)));
++		byte[] data = f.toByteArray();
++	
+ 		String addr = (fd.hasName) ? fd.name : "unknown";
+ 
+ 		if (addr != "unknown")
+-			Taint.log("DroidBox: { \"RecvNet\": { \"srchost\": \"" + addr + "\", \"data\": \"" + Taint.toHex(bufferBytes) + "\", \"srcport\": \"" + fd.port +"\", \"fd\": \"" + fd.id + "\" } }");
++			Taint.log("DroidBox: { \"RecvNet\": { \"srchost\": \"" + addr + "\", \"data\": \"" + Taint.toHex(data) + "\", \"srcport\": \"" + fd.port +"\", \"fd\": \"" + fd.id + "\" } }");
+ 	}
+ 
+        	return size; 
+@@ -359,35 +365,33 @@ public final class Posix implements Os {
+     public native void remove(String path) throws ErrnoException;
+     public native void rename(String oldPath, String newPath) throws ErrnoException;
+     public native long sendfile(FileDescriptor outFd, FileDescriptor inFd, MutableLong inOffset, long byteCount) throws ErrnoException;
++
+     public int sendto(FileDescriptor fd, ByteBuffer buffer, int flags, InetAddress inetAddress, int port) throws ErrnoException {
+         if (buffer.isDirect()) {
+ // begin WITH_TAINT_TRACKING
+             int tag = buffer.getDirectByteBufferTaint();
+-            /*if (tag != Taint.TAINT_CLEAR) {
+-                String addr = (fd.hasName) ? fd.name : "unknown";
+-                String tstr = "0x" + Integer.toHexString(tag);
+-                Taint.log("libcore.os.sendto(" + addr + ") received a ByteBuffer with tag " + tstr);
+-            }*/
+ 
+-	    int byteCount = buffer.remaining();
++            int byteCount = buffer.remaining();
+             byte[] bufferBytes = new byte[byteCount];
+             buffer.get(bufferBytes);
+ 
+-	    //String dstr = new String((byte[])bufferBytes, 0, ((byteCount > Taint.dataBytesToLog) ? Taint.dataBytesToLog : byteCount));
+-	    //String dstr = new String((byte[])bufferBytes, 0, byteCount);
+-	    //dstr = dstr.replaceAll("\\p{C}", ".");
+-	    String addr = (fd.hasName) ? fd.name : "unknown";
+-	    String tstr = "0x" + Integer.toHexString(tag);
+-
+-	    //Do not show when the address is unkown
+-	    if (addr != "unknown")
+-	    {
+-		    if (tag != Taint.TAINT_CLEAR) {
+-			Taint.log("DroidBox: { \"DataLeak\": { \"sink\": \"Network\", \"operation\": \"send\", \"tag\": \"" + tstr + "\", \"data\": \"" + Taint.toHex(bufferBytes) + "\", \"desthost\": \"" + addr + "\", \"destport\": \"" + fd.port +"\", \"fd\": \"" + fd.id + "\"} }");
+-		    }else{
+-			Taint.log("DroidBox: { \"SendNet\": { \"operation\": \"send\", \"data\": \"" + Taint.toHex(bufferBytes) + "\", \"desthost\": \"" + addr + "\", \"destport\": \"" + fd.port +"\", \"fd\": \"" + fd.id + "\" } }");
+-		    }
+-	    }
++            String addr = (fd.hasName) ? fd.name : "unknown";
++            String tstr = "0x" + Integer.toHexString(tag);
++
++            //Do not show when the address is unkown
++            if (addr != "unknown")
++            {
++                    ByteArrayOutputStream f = new ByteArrayOutputStream();
++                    f.write(bufferBytes, 0, (((byteCount > Taint.dataBytesToLog) ? Taint.dataBytesToLog : byteCount)));
++                    byte[] data = f.toByteArray();
++
++                    if (tag != Taint.TAINT_CLEAR)
++                    {
++                                Taint.log("DroidBox: { \"DataLeak\": { \"sink\": \"Network\", \"operation\": \"send\", \"tag\": \"" + tstr + "\", \"data\": \"" + Taint.toHex(data) + "\", \"desthost\": \"" + addr + "\", \"destport\": \"" + fd.port +"\", \"fd\": \"" + fd.id + "\"} }");
++                    }else{
++                                Taint.log("DroidBox: { \"SendNet\": { \"operation\": \"send\", \"data\": \"" + Taint.toHex(data) + "\", \"desthost\": \"" + addr + "\", \"destport\": \"" + fd.port +"\", \"fd\": \"" + fd.id + "\" } }");
++                    }
++            }
+ 
+ // end WITH_TAINT_TRACKING
+             return sendtoBytes(fd, buffer, buffer.position(), buffer.remaining(), flags, inetAddress, port);
+@@ -395,6 +399,7 @@ public final class Posix implements Os {
+             return sendtoBytes(fd, NioUtils.unsafeArray(buffer), NioUtils.unsafeArrayOffset(buffer) + buffer.position(), buffer.remaining(), flags, inetAddress, port);
+         }
+     }
++
+     public int sendto(FileDescriptor fd, byte[] bytes, int byteOffset, int byteCount, int flags, InetAddress inetAddress, int port) throws ErrnoException {
+         // This indirection isn't strictly necessary, but ensures that our public interface is type safe.
+         return sendtoBytes(fd, bytes, byteOffset, byteCount, flags, inetAddress, port);
+@@ -406,31 +411,20 @@ public final class Posix implements Os {
+     private int sendtoBytes(FileDescriptor fd, Object buffer, int byteOffset, int byteCount, int flags, InetAddress inetAddress, int port) throws ErrnoException {
+         if (buffer instanceof byte[]) {
+             int tag = Taint.getTaintByteArray((byte[]) buffer);
+-    	    /*if (tag != Taint.TAINT_CLEAR) {
+-                String dstr = new String((byte[]) buffer, byteOffset, ((byteCount > Taint.dataBytesToLog) ? Taint.dataBytesToLog : byteCount));
+-                // replace non-printable characters
+-                dstr = dstr.replaceAll("\\p{C}", ".");
+-                String addr = (fd.hasName) ? fd.name : "unknown";
+-    	        String tstr = "0x" + Integer.toHexString(tag);
+-                Taint.log("libcore.os.send("+addr+") received data with tag " + tstr + " data=["+dstr+"] ");
+-            }*/
++    	    
++		ByteArrayOutputStream f = new ByteArrayOutputStream();
++		f.write((byte[])buffer, byteOffset, (((byteCount > Taint.dataBytesToLog) ? Taint.dataBytesToLog : byteCount)));
++		byte[] data = f.toByteArray();
+ 
+-	        byte[] bufferBytes = new byte[byteCount];
+-		System.arraycopy((byte[])buffer, byteOffset, bufferBytes, 0, byteCount);
+-
+-	   	//String dstr = new String((byte[]) buffer, byteOffset, ((byteCount > Taint.dataBytesToLog) ? Taint.dataBytesToLog : byteCount));
+-		//String dstr = new String((byte[]) buffer, byteOffset, byteCount);
+-                // replace non-printable characters
+-                //dstr = dstr.replaceAll("\\p{C}", ".");
+-                String addr = (fd.hasName) ? fd.name : "unknown";
++	        String addr = (fd.hasName) ? fd.name : "unknown";
+     	        String tstr = "0x" + Integer.toHexString(tag);
+ 
+ 		if (addr != "unknown")
+ 		{
+ 			if (tag != Taint.TAINT_CLEAR)
+-				Taint.log("DroidBox: { \"DataLeak\": { \"sink\": \"Network\", \"operation\": \"send\", \"tag\": \"" + tstr + "\", \"data\": \"" + Taint.toHex(bufferBytes) + "\", \"desthost\": \"" + addr + "\", \"destport\": \"" + fd.port + "\" , \"fd\": \"" + fd.id + "\"} }"); 	
++				Taint.log("DroidBox: { \"DataLeak\": { \"sink\": \"Network\", \"operation\": \"send\", \"tag\": \"" + tstr + "\", \"data\": \"" + Taint.toHex(data) + "\", \"desthost\": \"" + addr + "\", \"destport\": \"" + fd.port + "\" , \"fd\": \"" + fd.id + "\"} }"); 	
+ 			else
+-				Taint.log("DroidBox: { \"SendNet\": { \"operation\": \"send\", \"data\": \"" + Taint.toHex(bufferBytes) + "\", \"desthost\": \"" + addr + "\", \"destport\": \"" + fd.port + "\" , \"fd\": \"" + fd.id + "\"} }"); 
++				Taint.log("DroidBox: { \"SendNet\": { \"operation\": \"send\", \"data\": \"" + Taint.toHex(data) + "\", \"desthost\": \"" + addr + "\", \"destport\": \"" + fd.port + "\" , \"fd\": \"" + fd.id + "\"} }"); 
+ 		}
+ 		
+         }
+-- 
+1.7.9.5
+

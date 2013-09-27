@@ -1,0 +1,126 @@
+From 65e5b6ac26105c9dbe145cb87476adc1a5da1900 Mon Sep 17 00:00:00 2001
+From: Peter Gilbert <petergilbert@gmail.com>
+Date: Thu, 6 Dec 2012 11:42:36 -0500
+Subject: [PATCH] xattr support for FUSE emulated sdcard
+
+---
+ sdcard/Android.mk |    5 ++++
+ sdcard/sdcard.c   |   75 +++++++++++++++++++++++++++++++++++++++++++++++++++++
+ 2 files changed, 80 insertions(+)
+
+diff --git a/sdcard/Android.mk b/sdcard/Android.mk
+index c430ac8..5cf3dae 100644
+--- a/sdcard/Android.mk
++++ b/sdcard/Android.mk
+@@ -2,6 +2,11 @@ LOCAL_PATH:= $(call my-dir)
+ 
+ include $(CLEAR_VARS)
+ 
++# Turn on Taint Tracking
++ifeq ($(WITH_TAINT_TRACKING),true)
++  LOCAL_CFLAGS += -DWITH_TAINT_TRACKING
++endif
++
+ LOCAL_SRC_FILES:= sdcard.c
+ LOCAL_MODULE:= sdcard
+ 
+diff --git a/sdcard/sdcard.c b/sdcard/sdcard.c
+index a95513c..2a147c1 100644
+--- a/sdcard/sdcard.c
++++ b/sdcard/sdcard.c
+@@ -31,6 +31,34 @@
+ 
+ #include "fuse.h"
+ 
++#ifdef WITH_TAINT_TRACKING
++// PJG: from attr/xattr.h
++extern int setxattr (const char *__path, const char *__name,
++		      const void *__value, size_t __size, int __flags);
++extern int lsetxattr (const char *__path, const char *__name,
++		      const void *__value, size_t __size, int __flags);
++extern int fsetxattr (int __filedes, const char *__name,
++		      const void *__value, size_t __size, int __flags);
++
++extern ssize_t getxattr (const char *__path, const char *__name,
++				void *__value, size_t __size);
++extern ssize_t lgetxattr (const char *__path, const char *__name,
++				void *__value, size_t __size);
++extern ssize_t fgetxattr (int __filedes, const char *__name,
++				void *__value, size_t __size);
++
++extern ssize_t listxattr (const char *__path, char *__list,
++				size_t __size);
++extern ssize_t llistxattr (const char *__path, char *__list,
++				size_t __size);
++extern ssize_t flistxattr (int __filedes, char *__list,
++				size_t __size);
++
++extern int removexattr (const char *__path, const char *__name);
++extern int lremovexattr (const char *__path, const char *__name);
++extern int fremovexattr (int __filedes,   const char *__name);
++#endif /*WITH_TAINT_TRACKING*/
++
+ /* README
+  *
+  * What is this?
+@@ -833,10 +861,57 @@ void handle_fuse_request(struct fuse *fuse, struct fuse_in_header *hdr, void *da
+         return;
+     }
+ //    case FUSE_FSYNC:
++#ifdef WITH_TAINT_TRACKING
++//    case FUSE_LISTXATTR:
++//    case FUSE_REMOVEXATTR:
++    case FUSE_SETXATTR: {
++        struct fuse_setxattr_in *req = data;
++        char *path, buffer[PATH_BUFFER_SIZE], value[XATTR_SIZE_MAX], name[XATTR_NAME_MAX];
++        int res;
++        
++        path = node_get_path(node, buffer, 0);
++        
++        // data:
++        // struct fuse_setxattr_in
++        // char[] name (null-terminated string)
++        // byte[] value (req->size bytes)
++        
++        strncpy(name, ((char*) data) + sizeof(*req), XATTR_NAME_MAX);
++        memcpy(value, ((char*) data) + sizeof(*req) + strlen(name) + 1, req->size);
++
++        res = setxattr(path, name, value, req->size, 0); 
++         
++        fuse_status(fuse, hdr->unique, res ? -errno : 0);
++        return;
++    }
++    case FUSE_GETXATTR: {
++        struct fuse_getxattr_in *req = data;
++        char *path, buffer[PATH_BUFFER_SIZE], value[XATTR_SIZE_MAX], name[XATTR_NAME_MAX];
++        int res;
++        
++        path = node_get_path(node, buffer, 0);
++        
++        // data:
++        // struct fuse_getxattr_in
++        // char[] name (null-terminated string)
++        
++        strncpy(name, ((char*) data) + sizeof(*req), XATTR_NAME_MAX);
++
++        res = getxattr(path, name, value, req->size); 
++        if (res < 0) {
++            fuse_status(fuse, hdr->unique, -errno);
++            return;
++        }
++        
++        fuse_reply(fuse, hdr->unique, value, res);
++        return;
++    }
++#else
+ //    case FUSE_SETXATTR:
+ //    case FUSE_GETXATTR:
+ //    case FUSE_LISTXATTR:
+ //    case FUSE_REMOVEXATTR:
++#endif /*WITH_TAINT_TRACKING*/
+     case FUSE_FLUSH:
+         fuse_status(fuse, hdr->unique, 0);
+         return;
+-- 
+1.7.9.5
+
