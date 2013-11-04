@@ -6,8 +6,18 @@ Droidbox4.1.1 uses a modified version of Android 4.1.1_rc6. In order to modify t
 
 In summary, the list of instructions are as follows:
 
-$ mkdir -p ~/droidbox4.1.1/emulator
-$ cd ~/droidbox4.1.1/emulator
+Step 1.1: Create the directory structure
+$ mkdir -p ~/droidbox4.1.1
+
+copy all the files from the downloaded archive to this folder
+
+$ mkdir -p ~/droidbox4.1.1/android_src
+
+create a new folder for the android sources
+
+Step 1.2: Get the Android sources
+
+$ cd ~/droidbox4.1.1/android_src
 $ repo init -u https://android.googlesource.com/platform/manifest -b android-4.1.1_r6
 $ repo sync
 
@@ -17,28 +27,28 @@ Step 2: Apply the DroidBox patches
 
 In order to incorporate the DroidBox into the Android emulator, you need to apply the Droidbox patches to the Android source code.
 
-$ cd ~/droidbox4.1.1/emulator/dalvik
-$ git am --droidbox4.1.1 < ~/droidbox4.1.1/patches/dalvik.patch
+$ cd ~/droidbox4.1.1/android_src/dalvik
+$ patch -p1 < ~/droidbox4.1.1/patches/dalvik.patch
 
-$ cd ~/droidbox4.1.1/emulator/libcore
-$ git am --droidbox4.1.1 < ~/droidbox4.1.1/patches/libcore.patch
+$ cd ~/droidbox4.1.1/android_src/libcore
+$ patch -p1 < ~/droidbox4.1.1/patches/libcore.patch
 
-$ cd ~/droidbox4.1.1/emulator/system/core
-$ git am --droidbox4.1.1 < ~/droidbox4.1.1/patches/system_core.patch
+$ cd ~/droidbox4.1.1/android_src/system/core
+$ patch -p1 < ~/droidbox4.1.1/patches/system_core.patch
 
-$ cd ~/droidbox4.1.1/emulator/system/vold
-$ git am --droidbox4.1.1 < ~/droidbox4.1.1/patches/system_vold.patch
+$ cd ~/droidbox4.1.1/android_src/system/vold
+$ patch -p1 < ~/droidbox4.1.1/patches/system_vold.patch
 
-$ cd ~/droidbox4.1.1/emulator/frameworks/base
-$ git am --droidbox4.1.1 < ~/droidbox4.1.1/patches/frameworks/base.patch
+$ cd ~/droidbox4.1.1/android_src/frameworks/base
+$ patch -p1 < ~/droidbox4.1.1/patches/frameworks/base.patch
 
-$ cd ~/droidbox4.1.1/emulator/frameworks/native
-$ git am --droidbox4.1.1 < ~/droidbox4.1.1/patches/frameworks/native.patch
+$ cd ~/droidbox4.1.1/android_src/frameworks/native
+$ patch -p1 < ~/droidbox4.1.1/patches/frameworks/native.patch
 
-$ cd ~/droidbox4.1.1/emulator/device/samsung/crespo.patch
-$ git am --droidbox4.1.1 < ~/droidbox4.1.1/patches/device_samsung_crespo.patch
+$ cd ~/droidbox4.1.1/android_src/device/samsung/crespo.patch
+$ patch -p1 < ~/droidbox4.1.1/patches/device_samsung_crespo.patch
 
-You also need to create the file "~/droidbox4.1.1/emulator/buildspec.mk" with the following content so as to integrate the taint data tracking
+You also need to create the file "~/droidbox4.1.1/android_src/buildspec.mk" with the following content so as to integrate the taint data tracking
 
 # Enable core taint tracking logic (always add this)
 WITH_TAINT_TRACKING := true
@@ -57,7 +67,7 @@ WITH_TAINT_FAST := true
 
 Step 3: Compile the modified Android source code
 
-$ cd ~/droidbox4.1.1/emulator
+$ cd ~/droidbox4.1.1/android_src
 $ . build/envsetup.sh
 $ lunch 1
 $ make -j4
