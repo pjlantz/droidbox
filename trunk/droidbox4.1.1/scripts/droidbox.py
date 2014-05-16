@@ -179,9 +179,6 @@ class Application:
 
      def getEnfperm(self):
 	return self.enfperm
-	
-     def getRecvsaction(self):
-	return self.recvsaction
 
      def getMainActivity(self):
 	return self.mainActivity
@@ -285,7 +282,7 @@ def main(argv):
 	mainActivity = application.getMainActivity()
 	packageName = application.getPackage()
 
-	recvsaction = application.getRecvsaction()
+	recvsaction = application.getRecvActions()
 	enfperm = application.getEnfperm()
 
 	#Get the hashes
