@@ -14,4 +14,7 @@ DroidBox is developed to offer dynamic analysis of Android applications. The fol
 - Sent SMS and phone calls
 
 
-Additionally, two images are generated visualizing the behavior of the package. One showing the temporal order of the operations and the other one being a treemap that can be used to check similarity between analyzed packages.
+Additionally, two graphs are generated visualizing the behavior of the package. One showing the temporal order of the operations and the other one being a treemap that can be used to check similarity between analyzed packages.
+
+![Alt text](http://dl.dropbox.com/u/1027328/behaviorsample.png "Optional Title")
+
