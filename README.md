@@ -1,4 +1,4 @@
-Background
+Intro
 ========
 
 DroidBox is developed to offer dynamic analysis of Android applications. The following information is described in the results, generated when analysis is complete:
@@ -35,17 +35,26 @@ export PATH=$PATH:/path/to/android-sdk/platform-tools/
 
 2. Download necessary files and uncompress it anywhere
 
+```
 wget http://droidbox.googlecode.com/files/DroidBox411RC.tar.gz
+```
 
 3. Setup a new AVD targeting Android 4.1.2 and choose Nexus 4 as device as well as ARM as CPU type by running:
 
+```
 android 
+```
 
 4. Start the emulator with the new AVD:
 
+```
 ./startemu.sh <AVD name>
+```
 
 5. When emulator has booted up, start analyzing samples (please use the absolute path to the apk):
 
+```
 ./droidbox.sh <file.apk> <duration in secs (optional)> 
+```
+
 The analysis is currently not automated except for installing and starting packages. Ending the analysis is simply done by pressing Ctrl-C. A package will also be implemented soon to populate the emulator with data prior to performing analysis.
