@@ -28,8 +28,10 @@ This is a guide to get DroidBox running. The release has only been tested on Lin
 
 1. Export the path for the SDK tools
 
+'''
 export PATH=$PATH:/path/to/android-sdk/tools/
 export PATH=$PATH:/path/to/android-sdk/platform-tools/
+'''
 
 2. Download necessary files and uncompress it anywhere
 
