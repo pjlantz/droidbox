@@ -36,7 +36,7 @@ export PATH=$PATH:/path/to/android-sdk/platform-tools/
 - Download necessary files and uncompress it anywhere
 
 ```
-wget http://droidbox.googlecode.com/files/DroidBox411RC.tar.gz
+wget https://github.com/pjlantz/droidbox/releases/download/v4.1.1/DroidBox411RC.tar.gz
 ```
 
 - Setup a new AVD targeting Android 4.1.2 and choose Nexus 4 as device as well as ARM as CPU type by running:
