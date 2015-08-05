@@ -153,7 +153,7 @@ class Application:
 					for child in item.getElementsByTagName('action'):
 						self.recvsaction[str( item.getAttribute("android:name") )] = (str( child.getAttribute("android:name") ))
 
-				for item in xml[i].getElementsByTagName('activity'):
+				for item in xml[i].getElementsByTagName('activity') + xml[i].getElementsByTagName('activity-alias'):
 					activity = str( item.getAttribute("android:name") )
 					self.activities[activity] = {}
 					self.activities[activity]["actions"] = list()
