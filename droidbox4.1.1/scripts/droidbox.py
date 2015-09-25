@@ -508,7 +508,7 @@ def main(argv):
 
         pathtemp = sys.path[0]
         os.chdir(pathtemp)
-        json.dump(output, open('droidboxlog.json','w'))
+        json.dump(output, open('droidboxlog_' + time.strftime('%H:%M_%Y%m%d') +'.json','w'))
 
 
 	print(json.dumps(output))
