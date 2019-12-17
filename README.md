@@ -16,10 +16,6 @@ DroidBox is developed to offer dynamic analysis of Android applications. The fol
 
 Additionally, two graphs are generated visualizing the behavior of the package. One showing the temporal order of the operations and the other one being a treemap that can be used to check similarity between analyzed packages.
 
-![Alt text](https://hackmag.com/wp-content/uploads/2015/03/behaviorgraph-com.android.blackmarket-20141009-14412.png "Behavior graph")
-
-![Alt text](https://hackmag.com/wp-content/uploads/2015/03/tree-com.android.blackmarket-20141009-14411.png "Treemap graph")
-
 Setup
 ======
 
